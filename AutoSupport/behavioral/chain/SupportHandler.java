@@ -1,65 +1,54 @@
 package behavioral.chain;
 
 import creational.factory.Ticket;
-import creational.factory.TicketStatus;
-
 import java.util.List;
 
 /**
- * Abstract handler in the Chain of Responsibility pattern.
- * <p>
- * Each handler either resolves the ticket or escalates it to the next handler
- * in the chain. This models real-world support tiers.
- * </p>
+ * Abstract base for all escalation handlers in the Chain of Responsibility.
  *
- * <b>Design Pattern:</b> Chain of Responsibility (Abstract Handler)
+ * PATTERN: Chain of Responsibility
+ * Each handler keeps a reference to the NEXT handler in the chain.
+ * If a handler cannot resolve the ticket, it calls next.handle() to pass it
+ * along. ManagerHandler (the final link) has no next — it resolves everything.
+ *
+ * RoutingStrategy builds the chain by linking handlers with setNext().
  */
 public abstract class SupportHandler {
 
-    /** The next handler in the chain. */
-    protected SupportHandler nextHandler;
-
-    /** Shared log list for recording handling actions. */
-    protected List<String> log;
+    /** The next handler in the chain; null only for the final (Manager) handler. */
+    private SupportHandler next;
 
     /**
-     * Constructs a SupportHandler with the given shared log.
+     * Wire the next handler in the chain.
+     * Returns 'next' so setNext() calls can be chained fluently:
+     *   l1.setNext(l2).setNext(manager)
      *
-     * @param log the shared log list
+     * @param next The handler to delegate to when this one cannot resolve.
+     * @return     The same 'next' reference (for fluent chaining).
      */
-    public SupportHandler(List<String> log) {
-        this.log = log;
+    public SupportHandler setNext(SupportHandler next) {
+        this.next = next;
+        return next; // enables fluent: l1.setNext(l2).setNext(mgr)
     }
 
     /**
-     * Sets the next handler in the chain.
+     * Try to handle the ticket; if unable, pass it to the next handler.
      *
-     * @param next the next handler
+     * @param ticket The ticket being escalated.
+     * @param log    Mutable list where each handler records its decision.
      */
-    public void setNext(SupportHandler next) {
-        this.nextHandler = next;
-    }
+    public abstract void handle(Ticket ticket, List<String> log);
 
     /**
-     * Attempts to handle the given ticket. If this handler cannot resolve it,
-     * the ticket is passed to the next handler via {@link #escalate(Ticket)}.
-     *
-     * @param ticket the ticket to handle
+     * Helper for subclasses: pass the ticket to the next handler,
+     * or log a "no handler" message if this is the end of the chain.
      */
-    public abstract void handle(Ticket ticket);
-
-    /**
-     * Escalates the ticket to the next handler in the chain.
-     * If no next handler exists, the ticket is resolved as a fallback.
-     *
-     * @param ticket the ticket to escalate
-     */
-    protected void escalate(Ticket ticket) {
-        if (nextHandler != null) {
-            nextHandler.handle(ticket);
+    protected void passToNext(Ticket ticket, List<String> log) {
+        if (next != null) {
+            next.handle(ticket, log);
         } else {
-            log.add("> No handler could resolve Ticket #" + ticket.getId());
-            ticket.setStatus(TicketStatus.RESOLVED); // fallback
+            // This should never happen if ManagerHandler is always the final link
+            log.add("⚠ No handler could process ticket #" + ticket.getId());
         }
     }
 }

@@ -1,94 +1,117 @@
 package structural.facade;
 
-import creational.factory.TicketType;
-import creational.factory.TicketStatus;
+import behavioral.chain.SupportHandler;
+import behavioral.observer.TicketEvent;
+import behavioral.observer.TicketEventType;
+import behavioral.state.TicketContext;
+import behavioral.strategy.RoutingStrategy;
 import creational.factory.Ticket;
 import creational.factory.TicketFactory;
+import creational.factory.TicketStatus;
+import creational.factory.TicketType;
 import creational.singleton.TicketSystem;
 import structural.adapter.EmailMessage;
 import structural.adapter.EmailTicketAdapter;
-import structural.adapter.TicketSource;
 import structural.decorator.UrgentTicketDecorator;
 
 import java.util.List;
 
 /**
- * Facade that hides the complexity of ticket creation, decoration, registration,
- * and logging behind simple method calls.
- * <p>
- * Clients call {@link #submitTicket} or {@link #submitFromEmail} without needing
- * to know about factories, decorators, adapters, or the ticket system internals.
- * </p>
+ * Single entry point for all ticket submission and escalation operations.
  *
- * <b>Design Pattern:</b> Facade
+ * PATTERN: Facade
+ * BUG FIXES applied here:
+ *  1. escalateTicket() no longer creates a broken TicketContext from scratch.
+ *     It now sets status + fires ESCALATED directly, then runs the chain.
+ *  2. TicketContext.fromExisting() used for reopen so state is restored correctly.
  */
 public class SupportFacade {
 
-    /** Reference to the global ticket system singleton. */
-    private TicketSystem system = TicketSystem.getInstance();
-
-    /** Shared log list — all messages appear in the GUI log panel. */
-    private List<String> log;
-
     /**
-     * Constructs a SupportFacade with the given shared log.
-     *
-     * @param sharedLog the shared log list for recording actions
+     * Full manual submission pipeline:
+     *  Factory → (Decorator) → State[OPEN→IN_PROGRESS] → Singleton → Observer[CREATED]
      */
-    public SupportFacade(List<String> sharedLog) {
-        this.log = sharedLog;
-    }
-
-    /**
-     * Full ticket submission pipeline in one call:
-     * <ol>
-     *   <li>Create ticket via Factory</li>
-     *   <li>Optionally wrap with UrgentDecorator</li>
-     *   <li>Register in TicketSystem</li>
-     *   <li>Log the action</li>
-     * </ol>
-     *
-     * @param type        the ticket category
-     * @param title       short summary
-     * @param description detailed description
-     * @param urgent      whether to mark as urgent
-     * @return the created (and possibly decorated) ticket
-     */
-    public Ticket submitTicket(TicketType type, String title, String description, boolean urgent) {
+    public Ticket submitTicket(TicketType type, String title,
+                               String description, boolean urgent) {
         Ticket ticket = TicketFactory.createTicket(type, title, description);
-        log.add("> Ticket #" + ticket.getId() + " created as " + ticket.getTypeLabel());
 
         if (urgent) {
             ticket = new UrgentTicketDecorator(ticket);
-            log.add("> Ticket #" + ticket.getId() + " decorated as URGENT");
         }
 
-        ticket.setStatus(TicketStatus.IN_PROGRESS);
-        system.addTicket(ticket);
-        log.add("> Ticket #" + ticket.getId() + " registered in system. Status: IN_PROGRESS");
+        // Advance state: OPEN → IN_PROGRESS before registering
+        TicketContext ctx = new TicketContext(ticket);
+        ctx.startProgress();
+
+        // Register triggers Observer CREATED event
+        TicketSystem.getInstance().addTicket(ticket);
         return ticket;
     }
 
     /**
-     * Submit a ticket sourced from a simulated email (uses Adapter internally).
-     *
-     * @param email  the email message to convert
-     * @param urgent whether to mark as urgent
-     * @return the created (and possibly decorated) ticket
+     * Email-sourced submission: Adapter detects type, then same pipeline.
      */
     public Ticket submitFromEmail(EmailMessage email, boolean urgent) {
-        TicketSource adapter = new EmailTicketAdapter(email);
-        Ticket ticket = adapter.toTicket();
-        log.add("> Email from [" + email.getSender() + "] adapted into Ticket #" + ticket.getId());
+        Ticket ticket = new EmailTicketAdapter(email).toTicket();
 
         if (urgent) {
             ticket = new UrgentTicketDecorator(ticket);
-            log.add("> Ticket #" + ticket.getId() + " decorated as URGENT");
         }
 
-        ticket.setStatus(TicketStatus.IN_PROGRESS);
-        system.addTicket(ticket);
-        log.add("> Ticket #" + ticket.getId() + " registered from email. Status: IN_PROGRESS");
+        TicketContext ctx = new TicketContext(ticket);
+        ctx.startProgress();
+        TicketSystem.getInstance().addTicket(ticket);
         return ticket;
+    }
+
+    /**
+     * Escalate a ticket through the chosen RoutingStrategy chain.
+     *
+     * PATTERN: State — transitions are enforced through TicketContext:
+     *   • If OPEN → automatically advance to IN_PROGRESS first, then escalate.
+     *   • If IN_PROGRESS → escalate directly.
+     *   • Any other state (ESCALATED / RESOLVED) throws IllegalStateException.
+     *
+     * PATTERN: Strategy — the caller supplies a RoutingStrategy which builds the
+     * handler chain; then PATTERN: Chain of Responsibility resolves the ticket.
+     *
+     * @param ticket   The ticket to escalate (must be OPEN or IN_PROGRESS).
+     * @param strategy The routing strategy that determines the handler chain.
+     * @param log      Mutable list each handler appends its decision to.
+     * @throws IllegalStateException if the ticket cannot legally be escalated.
+     */
+    public void escalateTicket(Ticket ticket, RoutingStrategy strategy,
+                               List<String> log) {
+        TicketContext ctx = TicketContext.fromExisting(ticket);
+
+        // Auto-advance OPEN → IN_PROGRESS (required by State machine before escalate)
+        if (ticket.getStatus() == TicketStatus.OPEN) {
+            ctx.startProgress();
+        }
+        // IN_PROGRESS → ESCALATED via the State machine
+        ctx.escalate();
+
+        // Notify observers that the ticket is now ESCALATED
+        TicketSystem.getInstance().notifyListeners(
+            new TicketEvent(ticket, TicketEventType.ESCALATED));
+
+        // Strategy builds the chain; chain resolves the ticket
+        SupportHandler chainHead = strategy.buildChain(ticket, log);
+        chainHead.handle(ticket, log);
+    }
+
+    /**
+     * Reopen a resolved ticket: RESOLVED → OPEN via the State machine.
+     * Uses fromExisting() so the context starts in ResolvedState, not OpenState.
+     *
+     * Fires REOPENED (not CREATED) so stats listeners can correctly decrement
+     * resolvedCount and increment openCount without double-counting.
+     *
+     * @throws IllegalStateException if the ticket is not currently RESOLVED.
+     */
+    public void reopenTicket(Ticket ticket) {
+        TicketContext.fromExisting(ticket).reopen(); // RESOLVED → OPEN via State
+        TicketSystem.getInstance().notifyListeners(
+            new TicketEvent(ticket, TicketEventType.REOPENED));
     }
 }

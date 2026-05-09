@@ -1,19 +1,14 @@
 package creational.factory;
 
 /**
- * Enumeration representing the lifecycle status of a support ticket.
+ * Enum representing the possible lifecycle statuses of a ticket.
+ *
+ * Managed by the State pattern (TicketContext + state classes).
+ * The State pattern guarantees only legal transitions between these values occur.
  */
 public enum TicketStatus {
-    /** Ticket has been created but not yet processed. */
-    OPEN,
-    /** Ticket is actively being worked on. */
-    IN_PROGRESS,
-    /** Ticket has been escalated to Level 1 support. */
-    ESCALATED_L1,
-    /** Ticket has been escalated to Level 2 support. */
-    ESCALATED_L2,
-    /** Ticket has been escalated to the Manager level. */
-    ESCALATED_MANAGER,
-    /** Ticket has been resolved and closed. */
-    RESOLVED
+    OPEN,               // Ticket just submitted, awaiting agent pickup
+    IN_PROGRESS,        // Agent is actively working on the ticket
+    ESCALATED,          // Ticket passed beyond L1, handled by L2 or Manager
+    RESOLVED            // Ticket has been closed / solution confirmed
 }

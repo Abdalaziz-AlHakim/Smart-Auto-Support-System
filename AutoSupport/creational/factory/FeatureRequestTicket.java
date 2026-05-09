@@ -1,32 +1,21 @@
 package creational.factory;
 
-
 /**
- * Concrete ticket representing a feature request or enhancement suggestion.
+ * Concrete ticket representing a user-requested new feature or enhancement.
  *
- * <b>Design Pattern:</b> Factory Method (Concrete Product)
+ * PATTERN: Factory Method — concrete Product.
+ * Created by TicketFactory when TicketType.FEATURE_REQUEST is requested.
+ * Level2Handler handles FEATURE_REQUEST tickets.
  */
 public class FeatureRequestTicket extends Ticket {
 
-    /**
-     * Constructs a new FeatureRequestTicket.
-     *
-     * @param id          unique ticket ID
-     * @param title       short summary of the feature request
-     * @param description detailed description of the feature request
-     */
     public FeatureRequestTicket(int id, String title, String description) {
         super(id, title, description);
-        this.type = TicketType.FEATURE_REQUEST;
     }
 
-    /**
-     * Returns the human-readable type label for this ticket.
-     *
-     * @return "Feature Request"
-     */
     @Override
-    public String getTypeLabel() {
-        return "Feature Request";
-    }
+    public TicketType getType() { return TicketType.FEATURE_REQUEST; }
+
+    @Override
+    public String getTypeLabel() { return "Feature Request"; }
 }

@@ -1,32 +1,21 @@
 package creational.factory;
 
-
 /**
- * Concrete ticket representing a general inquiry or question.
+ * Concrete ticket representing a general information request or question.
  *
- * <b>Design Pattern:</b> Factory Method (Concrete Product)
+ * PATTERN: Factory Method — concrete Product.
+ * Created by TicketFactory when TicketType.INQUIRY is requested.
+ * Level1Handler can resolve INQUIRY tickets without escalation.
  */
 public class InquiryTicket extends Ticket {
 
-    /**
-     * Constructs a new InquiryTicket.
-     *
-     * @param id          unique ticket ID
-     * @param title       short summary of the inquiry
-     * @param description detailed description of the inquiry
-     */
     public InquiryTicket(int id, String title, String description) {
         super(id, title, description);
-        this.type = TicketType.INQUIRY;
     }
 
-    /**
-     * Returns the human-readable type label for this ticket.
-     *
-     * @return "Inquiry"
-     */
     @Override
-    public String getTypeLabel() {
-        return "Inquiry";
-    }
+    public TicketType getType() { return TicketType.INQUIRY; }
+
+    @Override
+    public String getTypeLabel() { return "Inquiry"; }
 }

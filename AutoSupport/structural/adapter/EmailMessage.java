@@ -1,56 +1,36 @@
 package structural.adapter;
 
 /**
- * Represents an external email message with sender, subject, and body fields.
- * <p>
- * This class acts as the <b>Adaptee</b> in the Adapter pattern — it has an
- * incompatible interface that cannot be used directly as a {@code Ticket}.
- * </p>
+ * External email data object representing an inbound support email.
  *
- * <b>Design Pattern:</b> Adapter (Adaptee)
+ * PATTERN: Adapter (the "Adaptee")
+ * This class simulates an external format that we cannot modify (e.g., from a
+ * third-party mail library). EmailTicketAdapter bridges it to the Ticket format
+ * the system expects — without touching this class at all.
  */
 public class EmailMessage {
 
-    /** The email sender address or name. */
-    private String sender;
-
-    /** The email subject line. */
-    private String subject;
-
-    /** The email body content. */
-    private String body;
+    private final String sender;   // Sender's email address
+    private final String subject;  // Email subject line (used for type detection)
+    private final String body;     // Full email body (used as ticket description)
 
     /**
-     * Constructs a new EmailMessage.
-     *
-     * @param sender  the sender of the email
-     * @param subject the subject line
-     * @param body    the body content
+     * @param sender  The email address of the person who sent the message
+     * @param subject Subject line — EmailTicketAdapter scans this for keywords
+     * @param body    Message body — used as the ticket description
      */
     public EmailMessage(String sender, String subject, String body) {
-        this.sender = sender;
+        this.sender  = sender;
         this.subject = subject;
-        this.body = body;
+        this.body    = body;
     }
 
-    /**
-     * Returns the email sender.
-     *
-     * @return sender string
-     */
-    public String getSender() { return sender; }
-
-    /**
-     * Returns the email subject.
-     *
-     * @return subject string
-     */
+    public String getSender()  { return sender; }
     public String getSubject() { return subject; }
+    public String getBody()    { return body; }
 
-    /**
-     * Returns the email body.
-     *
-     * @return body string
-     */
-    public String getBody() { return body; }
+    @Override
+    public String toString() {
+        return String.format("Email[from=%s, subject=%s]", sender, subject);
+    }
 }

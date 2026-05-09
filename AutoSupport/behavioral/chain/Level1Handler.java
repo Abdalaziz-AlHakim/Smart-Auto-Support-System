@@ -1,44 +1,34 @@
 package behavioral.chain;
 
+import behavioral.observer.TicketEvent;
+import behavioral.observer.TicketEventType;
 import creational.factory.Ticket;
-import creational.factory.TicketType;
 import creational.factory.TicketStatus;
+import creational.factory.TicketType;
+import creational.singleton.TicketSystem;
 
 import java.util.List;
 
 /**
- * Level 1 support handler. Resolves {@link TicketType#INQUIRY} tickets;
- * escalates all other types to the next handler in the chain.
+ * First handler — resolves INQUIRY tickets; passes everything else up.
  *
- * <b>Design Pattern:</b> Chain of Responsibility (Concrete Handler)
+ * BUG FIX: Removed the redundant ESCALATED observer event from the pass-along
+ * path. SupportFacade now fires ESCALATED once before running the chain.
+ * Double-firing caused observers (StatisticsListener) to count incorrectly.
  */
 public class Level1Handler extends SupportHandler {
 
-    /**
-     * Constructs a Level1Handler with the given shared log.
-     *
-     * @param log the shared log list
-     */
-    public Level1Handler(List<String> log) {
-        super(log);
-    }
-
-    /**
-     * Handles the ticket. Resolves inquiries; escalates everything else to L2.
-     *
-     * @param ticket the ticket to handle
-     */
     @Override
-    public void handle(Ticket ticket) {
-        ticket.setStatus(TicketStatus.ESCALATED_L1);
-        log.add("> L1 Agent handling Ticket #" + ticket.getId() + " (" + ticket.getTypeLabel() + ")");
+    public void handle(Ticket ticket, List<String> log) {
         if (ticket.getType() == TicketType.INQUIRY) {
             ticket.setStatus(TicketStatus.RESOLVED);
-            log.add("> L1 Agent RESOLVED Ticket #" + ticket.getId());
+            log.add("✅ L1 Agent: RESOLVED Inquiry ticket #" + ticket.getId());
+            TicketSystem.getInstance().notifyListeners(
+                new TicketEvent(ticket, TicketEventType.RESOLVED));
         } else {
-            log.add("> L1 cannot resolve. Escalating to L2...");
-            ticket.setStatus(TicketStatus.ESCALATED_L2);
-            escalate(ticket);
+            // Cannot handle — pass to L2 (no extra ESCALATED event; Facade already fired it)
+            log.add("➡ L1 Agent: Cannot handle " + ticket.getType() + " — passing to L2.");
+            passToNext(ticket, log);
         }
     }
 }

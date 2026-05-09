@@ -1,37 +1,38 @@
 package behavioral.chain;
 
+import behavioral.observer.TicketEvent;
+import behavioral.observer.TicketEventType;
 import creational.factory.Ticket;
 import creational.factory.TicketStatus;
+import creational.singleton.TicketSystem;
 
 import java.util.List;
 
 /**
- * Manager-level support handler. This is the final handler in the chain
- * and resolves all remaining tickets regardless of type.
+ * Final handler in the escalation chain — resolves everything that reaches it.
  *
- * <b>Design Pattern:</b> Chain of Responsibility (Concrete Handler)
+ * PATTERN: Chain of Responsibility (Concrete Handler — Manager / Final fallback)
+ * ManagerHandler never calls passToNext() because it is always the last link.
+ * No ticket should leave the chain unresolved — this handler guarantees that.
  */
 public class ManagerHandler extends SupportHandler {
 
     /**
-     * Constructs a ManagerHandler with the given shared log.
+     * Resolve any ticket that reaches this level.
+     * ManagerHandler is the authority of last resort — it handles all ticket types.
      *
-     * @param log the shared log list
-     */
-    public ManagerHandler(List<String> log) {
-        super(log);
-    }
-
-    /**
-     * Handles the ticket by resolving it unconditionally.
-     * The manager is the last resort in the escalation chain.
-     *
-     * @param ticket the ticket to handle
+     * @param ticket The ticket to process.
+     * @param log    Mutable log list — this handler appends its decision.
      */
     @Override
-    public void handle(Ticket ticket) {
-        log.add("> Manager handling Ticket #" + ticket.getId());
+    public void handle(Ticket ticket, List<String> log) {
+        // Manager can always resolve — no further escalation possible
         ticket.setStatus(TicketStatus.RESOLVED);
-        log.add("> Manager RESOLVED Ticket #" + ticket.getId());
+        log.add("Manager: RESOLVED " + ticket.getType()
+                + " ticket #" + ticket.getId() + " (final authority).");
+
+        // Notify all observers of the final resolution
+        TicketSystem.getInstance().notifyListeners(
+            new TicketEvent(ticket, TicketEventType.RESOLVED));
     }
 }

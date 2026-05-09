@@ -1,46 +1,53 @@
 package structural.decorator;
 
-import creational.factory.TicketPriority;
+import creational.factory.Priority;
 import creational.factory.Ticket;
 
 /**
- * Concrete decorator that marks any {@link Ticket} as URGENT at runtime.
- * <p>
- * Adds urgent priority behavior and a visual prefix to the type label and
- * toString output, without subclassing every ticket type separately.
- * </p>
+ * Concrete decorator that elevates a ticket's priority to URGENT at runtime.
  *
- * <b>Design Pattern:</b> Decorator (Concrete Decorator)
+ * PATTERN: Decorator
+ * Wraps any Ticket (or another decorator) and overrides only the three methods
+ * that change when a ticket is urgent. Everything else is delegated to the
+ * wrapped ticket via TicketDecorator's default implementations.
+ *
+ * Why Decorator and not a boolean flag on Ticket?
+ * A flag mixes urgency logic into the base class. Decorator keeps urgency
+ * as an independent, composable wrapper — zero changes to Ticket subclasses.
  */
 public class UrgentTicketDecorator extends TicketDecorator {
 
     /**
-     * Wraps the given ticket and sets its priority to URGENT.
-     *
-     * @param ticket the ticket to decorate as urgent
+     * @param wrapped Any Ticket to mark as urgent.
+     *                May itself already be decorated.
      */
-    public UrgentTicketDecorator(Ticket ticket) {
-        super(ticket);
-        this.priority = TicketPriority.URGENT;
+    public UrgentTicketDecorator(Ticket wrapped) {
+        super(wrapped);
     }
 
     /**
-     * Returns the type label prefixed with "[URGENT]".
-     *
-     * @return the urgent-decorated type label
+     * Always returns URGENT, overriding the wrapped ticket's priority.
+     */
+    @Override
+    public Priority getPriority() {
+        return Priority.URGENT;
+    }
+
+    /**
+     * Prepends "[URGENT] " to the wrapped ticket's type label.
+     * Example: "Bug" → "[URGENT] Bug"
      */
     @Override
     public String getTypeLabel() {
-        return "[URGENT] " + wrappedTicket.getTypeLabel();
+        return "[URGENT] " + wrapped.getTypeLabel();
     }
 
     /**
-     * Returns a string representation prefixed with a red circle emoji.
-     *
-     * @return urgent-decorated string
+     * Prepends a red circle emoji so the GUI table row is instantly recognisable.
+     * Example: "[#3] Safari crash (Bug) — OPEN" → "🔴 [#3] Safari crash ..."
      */
     @Override
     public String toString() {
-        return "\uD83D\uDD34 " + super.toString();
+        return "🔴 " + wrapped.toString();
     }
 }

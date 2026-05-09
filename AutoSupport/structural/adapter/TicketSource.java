@@ -3,20 +3,20 @@ package structural.adapter;
 import creational.factory.Ticket;
 
 /**
- * Target interface for the Adapter pattern.
- * <p>
- * Any source of tickets (e.g., email, API, manual input) must implement this
- * interface to produce a {@link Ticket} object that the system can work with.
- * </p>
+ * Target interface that the AutoSupport system uses for any ticket source.
  *
- * <b>Design Pattern:</b> Adapter (Target)
+ * PATTERN: Adapter
+ * The system only knows about this interface. EmailTicketAdapter implements it
+ * to bridge the gap between the external EmailMessage format and the Ticket
+ * type the system expects — without modifying EmailMessage at all.
  */
 public interface TicketSource {
 
     /**
-     * Converts the source data into a {@link Ticket} object.
+     * Convert the underlying data source into a Ticket object
+     * ready to be registered in TicketSystem.
      *
-     * @return a newly created Ticket
+     * @return a fully constructed Ticket (subclass chosen by the adapter)
      */
     Ticket toTicket();
 }

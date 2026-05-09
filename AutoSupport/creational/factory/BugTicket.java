@@ -1,32 +1,21 @@
 package creational.factory;
 
-
 /**
- * Concrete ticket representing a software bug or defect report.
+ * Concrete ticket representing a software defect (bug report).
  *
- * <b>Design Pattern:</b> Factory Method (Concrete Product)
+ * PATTERN: Factory Method — this is one of the concrete Products.
+ * TicketFactory creates this when TicketType.BUG is requested.
+ * Level2Handler is responsible for resolving BUG tickets.
  */
 public class BugTicket extends Ticket {
 
-    /**
-     * Constructs a new BugTicket.
-     *
-     * @param id          unique ticket ID
-     * @param title       short summary of the bug
-     * @param description detailed description of the bug
-     */
     public BugTicket(int id, String title, String description) {
         super(id, title, description);
-        this.type = TicketType.BUG;
     }
 
-    /**
-     * Returns the human-readable type label for this ticket.
-     *
-     * @return "Bug"
-     */
     @Override
-    public String getTypeLabel() {
-        return "Bug";
-    }
+    public TicketType getType() { return TicketType.BUG; }
+
+    @Override
+    public String getTypeLabel() { return "Bug"; }
 }

@@ -1,38 +1,48 @@
 package creational.singleton;
 
+import behavioral.observer.TicketEvent;
+import behavioral.observer.TicketEventListener;
+import behavioral.observer.TicketEventType;
+import behavioral.state.TicketContext;
 import creational.factory.Ticket;
+import creational.factory.TicketStatus;
+import structural.proxy.ITicketSystem;
+
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
- * Singleton class that serves as the global registry for all support tickets.
- * <p>
- * Only one instance of {@code TicketSystem} exists at any time, ensuring a
- * centralized, consistent view of all tickets across the application.
- * </p>
+ * The single global registry for all tickets in the AutoSupport system.
  *
- * <b>Design Pattern:</b> Singleton
+ * PATTERN: Singleton
+ * Only one instance can ever exist. It is the authoritative source for:
+ *   • The complete list of all submitted tickets
+ *   • Auto-incrementing unique ticket IDs
+ *   • The Observer event bus (subscriber list + notification dispatch)
+ *
+ * PATTERN: Observer (Subject role)
+ * TicketSystem doubles as the event bus. Listeners register via subscribe()
+ * and are notified whenever addTicket() or resolveTicket() is called.
+ *
+ * Thread safety note: for a demo application, lazy initialisation without
+ * synchronisation is acceptable. In production, use an enum Singleton or
+ * double-checked locking.
  */
-public class TicketSystem {
+public class TicketSystem implements ITicketSystem {
 
-    /** The single instance of the TicketSystem. */
+    // ── Singleton ────────────────────────────────────────────────────────────
+
+    /** The one and only instance; created on first access. */
     private static TicketSystem instance;
 
-    /** Internal list holding all registered tickets. */
-    private List<Ticket> tickets = new ArrayList<>();
-
-    /** Auto-incrementing counter used to generate unique ticket IDs. */
-    private int idCounter = 1;
-
-    /**
-     * Private constructor to prevent external instantiation.
-     */
+    /** Private constructor prevents direct instantiation from outside. */
     private TicketSystem() {}
 
     /**
-     * Returns the single instance of the TicketSystem, creating it if necessary.
+     * Returns the single TicketSystem instance, creating it on first call.
      *
-     * @return the global TicketSystem instance
+     * @return The global TicketSystem instance.
      */
     public static TicketSystem getInstance() {
         if (instance == null) {
@@ -41,39 +51,100 @@ public class TicketSystem {
         return instance;
     }
 
+    // ── State ────────────────────────────────────────────────────────────────
+
+    /** All tickets ever submitted; order preserved by insertion. */
+    private final List<Ticket> tickets = new ArrayList<>();
+
+    /** Auto-incrementing counter; starts at 1 so ticket IDs are human-friendly. */
+    private int idCounter = 1;
+
+    /** Registered Observer listeners — notified on every lifecycle event. */
+    private final List<TicketEventListener> listeners = new ArrayList<>();
+
+    // ── Observer subscription ─────────────────────────────────────────────────
+
     /**
-     * Adds a ticket to the global registry.
+     * Register a new listener to receive ticket lifecycle events.
+     * Call this at startup in Main.java for each listener (LogPanel, Console, Stats).
      *
-     * @param t the ticket to register
+     * @param listener The observer to add; must not be null.
      */
+    public void subscribe(TicketEventListener listener) {
+        listeners.add(listener);
+    }
+
+    /**
+     * Broadcast a lifecycle event to every registered listener.
+     * Called internally after addTicket() and resolveTicket().
+     *
+     * @param event The event to broadcast.
+     */
+    public void notifyListeners(TicketEvent event) {
+        // Iterate a copy to avoid ConcurrentModificationException if a listener
+        // unsubscribes itself during notification (defensive copy).
+        for (TicketEventListener listener : new ArrayList<>(listeners)) {
+            listener.onTicketEvent(event);
+        }
+    }
+
+    // ── ITicketSystem implementation ──────────────────────────────────────────
+
+    /**
+     * Add a ticket to the registry and fire a CREATED event to all listeners.
+     * Called by SupportFacade after the full construction pipeline completes.
+     *
+     * @param t The fully constructed (and optionally decorated) ticket.
+     */
+    @Override
     public void addTicket(Ticket t) {
         tickets.add(t);
+        // Notify all observers that a new ticket has entered the system
+        notifyListeners(new TicketEvent(t, TicketEventType.CREATED));
     }
 
     /**
-     * Returns the list of all registered tickets.
+     * Mark a ticket as RESOLVED and fire a RESOLVED event.
      *
-     * @return list of all tickets
+     * PATTERN: State
+     * Delegates to TicketContext.fromExisting().resolve() so illegal transitions
+     * (resolving an OPEN or already-RESOLVED ticket) are rejected by the State
+     * machine before any status change occurs.
+     *
+     * PATTERN: Proxy
+     * Access to this method is guarded by TicketSystemProxy based on user role;
+     * the Proxy throws SecurityException before this line is ever reached.
+     *
+     * @param t The ticket to resolve.
+     * @throws IllegalStateException if the ticket is OPEN or already RESOLVED.
      */
-    public List<Ticket> getAllTickets() {
-        return tickets;
+    @Override
+    public void resolveTicket(Ticket t) {
+        // Delegate to the State machine — enforces legal transitions only
+        TicketContext.fromExisting(t).resolve();
+        // Notify observers only after a successful state transition
+        notifyListeners(new TicketEvent(t, TicketEventType.RESOLVED));
     }
 
     /**
-     * Generates and returns the next unique ticket ID.
+     * Return an unmodifiable view of all tickets so callers cannot mutate the list.
      *
-     * @return a unique integer ID
+     * @return Read-only list of all tickets in submission order.
+     */
+    @Override
+    public List<Ticket> getAllTickets() {
+        return Collections.unmodifiableList(tickets);
+    }
+
+    // ── ID generation ─────────────────────────────────────────────────────────
+
+    /**
+     * Generate the next unique ticket ID.
+     * Called exclusively by TicketFactory so IDs are always assigned centrally.
+     *
+     * @return The next available integer ID (starts at 1).
      */
     public int generateId() {
         return idCounter++;
-    }
-
-    /**
-     * Removes a ticket from the global registry.
-     *
-     * @param t the ticket to remove
-     */
-    public void removeTicket(Ticket t) {
-        tickets.remove(t);
     }
 }

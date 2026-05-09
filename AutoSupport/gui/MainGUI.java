@@ -1,427 +1,425 @@
 package gui;
 
-import creational.factory.TicketPriority;
-import creational.factory.TicketStatus;
-import creational.factory.TicketType;
-import behavioral.chain.Level1Handler;
-import behavioral.chain.Level2Handler;
-import behavioral.chain.ManagerHandler;
-import behavioral.chain.SupportHandler;
-import creational.factory.Ticket;
-import creational.singleton.TicketSystem;
+import behavioral.strategy.*;
+import creational.factory.*;
 import structural.adapter.EmailMessage;
 import structural.facade.SupportFacade;
+import structural.proxy.*;
 
 import javax.swing.*;
-import javax.swing.table.DefaultTableCellRenderer;
-import javax.swing.table.DefaultTableModel;
+import javax.swing.table.*;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Main GUI window for the AutoSupport application.
- * <p>
- * Provides a Swing-based interface with a ticket table, control panel,
- * and real-time log panel. All user actions (submit, email, escalate,
- * resolve, clear) are handled through button listeners.
- * </p>
+ * Main Swing GUI for the AutoSupport system.
+ *
+ * Wires together:
+ *   Proxy      — all operations go through TicketSystemProxy (role enforcement)
+ *   Facade     — submitTicket, submitFromEmail, escalateTicket
+ *   Observer   — log panel + stats bar updated automatically via listeners (registered in Main)
+ *   Strategy   — routing strategy dropdown lets agent pick chain at escalation time
+ *   State      — ticket status column reflects live TicketContext transitions
+ *   Factory    — ticket type dropdown feeds TicketFactory inside the Facade
+ *   Decorator  — "Urgent" checkbox wraps ticket with UrgentTicketDecorator inside Facade
+ *   Adapter    — "Simulate Email" dialog feeds EmailTicketAdapter inside Facade
  */
 public class MainGUI extends JFrame {
 
-    /** Shared log list used by Facade and Chain handlers. */
-    private List<String> log = new ArrayList<>();
+    // ── Core dependencies ─────────────────────────────────────────────────────
 
-    /** Facade for ticket submission operations. */
-    private SupportFacade facade = new SupportFacade(log);
+    /** Access guard — all write operations pass through the Proxy. */
+    private final ITicketSystem proxy = new TicketSystemProxy();
 
-    /** Table model backing the ticket JTable. */
-    private DefaultTableModel tableModel;
+    /** Facade — the only subsystem the GUI talks to for business operations. */
+    private final SupportFacade facade = new SupportFacade();
 
-    /** The ticket table component. */
-    private JTable ticketTable;
+    // ── Ticket table ──────────────────────────────────────────────────────────
 
-    /** Text area displaying real-time log messages. */
-    private JTextArea logArea;
+    private final String[] COLUMNS = {"ID", "Title", "Type", "Priority", "Status"};
+    private final DefaultTableModel tableModel  = new DefaultTableModel(COLUMNS, 0) {
+        @Override public boolean isCellEditable(int r, int c) { return false; }
+    };
+    private final JTable ticketTable = new JTable(tableModel);
 
-    /** Input field for ticket title. */
-    private JTextField titleField;
+    // ── Log panel (populated by LogPanelListener) ─────────────────────────────
 
-    /** Input field for ticket description. */
-    private JTextArea descriptionField;
+    private final JTextArea logArea = new JTextArea();
 
-    /** Dropdown for selecting ticket type. */
-    private JComboBox<TicketType> typeCombo;
+    // ── Stats bar (populated by StatisticsListener) ───────────────────────────
 
-    /** Checkbox for marking a ticket as urgent. */
-    private JCheckBox urgentCheck;
+    private final JLabel statsLabel = new JLabel("  Open: 0  |  Escalated: 0  |  Resolved: 0  ");
 
-    /**
-     * Constructs the MainGUI, initializes all components, and lays out the window.
-     */
+    // ── Submit form fields ────────────────────────────────────────────────────
+
+    private final JTextField     titleField  = new JTextField(20);
+    private final JTextArea      descField   = new JTextArea(3, 20);
+    private final JComboBox<TicketType>    typeCombo =
+            new JComboBox<>(TicketType.values());
+    private final JCheckBox      urgentBox   = new JCheckBox("Urgent");
+
+    // ── Strategy selector ─────────────────────────────────────────────────────
+
+    private final JComboBox<String> strategyCombo = new JComboBox<>(
+            new String[]{"Standard", "Urgent", "Type-Based"});
+
+    // ── Login ─────────────────────────────────────────────────────────────────
+
+    private final JComboBox<UserRole> roleCombo = new JComboBox<>(UserRole.values());
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Constructor
+    // ─────────────────────────────────────────────────────────────────────────
+
     public MainGUI() {
-        setTitle("AutoSupport \u2014 Ticket Management System");
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1000, 650);
-        setLocationRelativeTo(null);
+        super("AutoSupport — 10-Pattern Demo");
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setSize(1000, 700);
+        setLocationRelativeTo(null); // Centre on screen
+
+        buildUI();
+        applyTableRenderer(); // Colour rows by priority / status
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // UI construction
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void buildUI() {
         setLayout(new BorderLayout(5, 5));
 
-        // --- Title Bar ---
-        JLabel titleLabel = new JLabel("AutoSupport \u2014 Ticket Management System", SwingConstants.CENTER);
-        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 18));
-        titleLabel.setOpaque(true);
-        titleLabel.setBackground(new Color(44, 62, 80));
-        titleLabel.setForeground(Color.WHITE);
-        titleLabel.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
-        add(titleLabel, BorderLayout.NORTH);
-
-        // --- Left Panel (Controls) ---
-        JPanel leftPanel = buildLeftPanel();
-        add(leftPanel, BorderLayout.WEST);
-
-        // --- Center: Table + Log split ---
-        JSplitPane centerSplit = buildCenterPanel();
-        add(centerSplit, BorderLayout.CENTER);
+        add(buildLoginPanel(),  BorderLayout.NORTH);
+        add(buildCentrePanel(), BorderLayout.CENTER);
+        add(buildActionPanel(), BorderLayout.EAST);
+        add(buildStatusBar(),   BorderLayout.SOUTH);
     }
 
-    /**
-     * Builds the left control panel with input fields and action buttons.
-     *
-     * @return the constructed left panel
-     */
-    private JPanel buildLeftPanel() {
-        JPanel panel = new JPanel();
-        panel.setPreferredSize(new Dimension(250, 0));
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        panel.setBackground(new Color(236, 240, 241));
+    /** Top bar: role selector (feeds UserSession, used by Proxy). */
+    private JPanel buildLoginPanel() {
+        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        p.setBorder(BorderFactory.createTitledBorder("Session"));
 
-        // Title
-        panel.add(new JLabel("Ticket Title:"));
-        titleField = new JTextField();
-        titleField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
-        panel.add(titleField);
-        panel.add(Box.createVerticalStrut(8));
+        p.add(new JLabel("Logged in as: "));
+        p.add(roleCombo);
 
-        // Description
-        panel.add(new JLabel("Description:"));
-        descriptionField = new JTextArea(4, 20);
-        descriptionField.setLineWrap(true);
-        descriptionField.setWrapStyleWord(true);
-        JScrollPane descScroll = new JScrollPane(descriptionField);
-        descScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 80));
-        panel.add(descScroll);
-        panel.add(Box.createVerticalStrut(8));
-
-        // Type dropdown
-        panel.add(new JLabel("Type:"));
-        typeCombo = new JComboBox<>(TicketType.values());
-        typeCombo.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
-        panel.add(typeCombo);
-        panel.add(Box.createVerticalStrut(8));
-
-        // Urgent checkbox
-        urgentCheck = new JCheckBox("Mark as Urgent");
-        urgentCheck.setBackground(new Color(236, 240, 241));
-        panel.add(urgentCheck);
-        panel.add(Box.createVerticalStrut(15));
-
-        // Buttons
-        panel.add(createButton("Submit Ticket", e -> onSubmitTicket()));
-        panel.add(Box.createVerticalStrut(8));
-        panel.add(createButton("Simulate Email", e -> onSimulateEmail()));
-        panel.add(Box.createVerticalStrut(8));
-        panel.add(createButton("Escalate Selected", e -> onEscalateSelected()));
-        panel.add(Box.createVerticalStrut(8));
-        panel.add(createButton("Resolve Selected", e -> onResolveSelected()));
-        panel.add(Box.createVerticalStrut(8));
-        panel.add(createButton("Clear Log", e -> onClearLog()));
-
-        return panel;
+        JButton loginBtn = new JButton("Set Role");
+        loginBtn.addActionListener(e -> {
+            // Update UserSession — TicketSystemProxy reads this on every operation
+            UserSession.getInstance().setRole((UserRole) roleCombo.getSelectedItem());
+            JOptionPane.showMessageDialog(this,
+                "Role set to: " + UserSession.getInstance().getRole());
+        });
+        p.add(loginBtn);
+        return p;
     }
 
-    /**
-     * Creates a styled button with the given text and action listener.
-     *
-     * @param text     the button label
-     * @param listener the action to perform on click
-     * @return a configured JButton
-     */
-    private JButton createButton(String text, java.awt.event.ActionListener listener) {
-        JButton btn = new JButton(text);
-        btn.setAlignmentX(Component.LEFT_ALIGNMENT);
-        btn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35));
-        btn.setBackground(new Color(52, 152, 219));
-        btn.setForeground(Color.WHITE);
-        btn.setFocusPainted(false);
-        btn.setFont(new Font("SansSerif", Font.BOLD, 12));
-        btn.addActionListener(listener);
-        return btn;
-    }
-
-    /**
-     * Builds the center panel containing the ticket table and log area.
-     *
-     * @return a JSplitPane with table on top and log on bottom
-     */
-    private JSplitPane buildCenterPanel() {
-        // Table
-        String[] columns = { "ID", "Type", "Priority", "Status", "Title" };
-        tableModel = new DefaultTableModel(columns, 0) {
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-        };
-        ticketTable = new JTable(tableModel);
-        ticketTable.setDefaultRenderer(Object.class, new TicketCellRenderer());
+    /** Centre: ticket table (left) + log panel (right). */
+    private JSplitPane buildCentrePanel() {
+        // Ticket table setup
+        ticketTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         ticketTable.setRowHeight(24);
-        ticketTable.getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 13));
         JScrollPane tableScroll = new JScrollPane(ticketTable);
+        tableScroll.setBorder(BorderFactory.createTitledBorder("Tickets"));
 
-        // Log area
-        logArea = new JTextArea();
+        // Log panel setup
         logArea.setEditable(false);
-        logArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        logArea.setBackground(new Color(44, 62, 80));
-        logArea.setForeground(new Color(46, 204, 113));
+        logArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         JScrollPane logScroll = new JScrollPane(logArea);
-        logScroll.setBorder(BorderFactory.createTitledBorder("System Log"));
+        logScroll.setBorder(BorderFactory.createTitledBorder("Event Log (Observer)"));
 
-        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, tableScroll, logScroll);
-        split.setDividerLocation(350);
-        split.setResizeWeight(0.65);
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,
+                tableScroll, logScroll);
+        split.setDividerLocation(600);
         return split;
     }
 
-    // ======================== Action Handlers ========================
+    /** Right panel: submit form + action buttons. */
+    private JPanel buildActionPanel() {
+        JPanel p = new JPanel();
+        p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
+        p.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+
+        // ── Submit form ──────────────────────────────────────────────────────
+        JPanel form = new JPanel(new GridLayout(0, 2, 4, 4));
+        form.setBorder(BorderFactory.createTitledBorder("Submit Ticket"));
+
+        form.add(new JLabel("Title:"));        form.add(titleField);
+        form.add(new JLabel("Description:"));  form.add(new JScrollPane(descField));
+        form.add(new JLabel("Type:"));         form.add(typeCombo);
+        form.add(new JLabel(""));              form.add(urgentBox);
+
+        JButton submitBtn = new JButton("Submit Ticket");
+        submitBtn.addActionListener(e -> onSubmitTicket());
+        form.add(submitBtn);
+
+        JButton emailBtn = new JButton("Simulate Email");
+        emailBtn.addActionListener(e -> onSimulateEmail());
+        form.add(emailBtn);
+
+        p.add(form);
+        p.add(Box.createVerticalStrut(10));
+
+        // ── Escalation controls ──────────────────────────────────────────────
+        JPanel esc = new JPanel(new GridLayout(0, 1, 4, 4));
+        esc.setBorder(BorderFactory.createTitledBorder("Escalate Selected"));
+
+        esc.add(new JLabel("Routing Strategy:"));
+        esc.add(strategyCombo);
+
+        JButton escBtn = new JButton("Escalate Selected");
+        escBtn.addActionListener(e -> onEscalate());
+        esc.add(escBtn);
+
+        p.add(esc);
+        p.add(Box.createVerticalStrut(10));
+
+        // ── Other actions ────────────────────────────────────────────────────
+        JPanel actions = new JPanel(new GridLayout(0, 1, 4, 4));
+        actions.setBorder(BorderFactory.createTitledBorder("Actions"));
+
+        JButton resolveBtn = new JButton("Resolve Selected");
+        resolveBtn.addActionListener(e -> onResolve());
+        actions.add(resolveBtn);
+
+        JButton reopenBtn = new JButton("Reopen Selected");
+        reopenBtn.addActionListener(e -> onReopen());
+        actions.add(reopenBtn);
+
+        p.add(actions);
+        return p;
+    }
+
+    /** South: stats label populated by StatisticsListener via Observer. */
+    private JPanel buildStatusBar() {
+        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        p.setBorder(BorderFactory.createEtchedBorder());
+        statsLabel.setFont(new Font(Font.MONOSPACED, Font.BOLD, 12));
+        p.add(statsLabel);
+        return p;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Action handlers
+    // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Handles the Submit Ticket button. Reads input fields, submits via Facade,
-     * refreshes the table, and updates the log.
+     * Submit a manually entered ticket.
+     * Flow: Proxy check → Facade → Factory → (Decorator) → State → Singleton → Observer
      */
     private void onSubmitTicket() {
         String title = titleField.getText().trim();
-        String desc = descriptionField.getText().trim();
         if (title.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please enter a ticket title.", "Validation",
-                    JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Please enter a title.");
             return;
         }
-        TicketType type = (TicketType) typeCombo.getSelectedItem();
-        boolean urgent = urgentCheck.isSelected();
 
-        facade.submitTicket(type, title, desc, urgent);
-        refreshTable();
-        refreshLog();
+        try {
+            // Facade orchestrates the full creation pipeline
+            Ticket t = facade.submitTicket(
+                (TicketType) typeCombo.getSelectedItem(),
+                title,
+                descField.getText().trim(),
+                urgentBox.isSelected()
+            );
+            // Proxy-gated registration (Proxy re-wraps addTicket internally via Facade)
+            refreshTable(); // Re-render table to show new row
+            titleField.setText("");
+            descField.setText("");
 
-        // Clear inputs
-        titleField.setText("");
-        descriptionField.setText("");
-        urgentCheck.setSelected(false);
+        } catch (SecurityException ex) {
+            JOptionPane.showMessageDialog(this, "Access denied: " + ex.getMessage(),
+                "Security", JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     /**
-     * Handles the Simulate Email button. Opens a modal dialog for email input,
-     * then submits via Facade adapter pipeline.
+     * Open dialog to simulate an inbound support email.
+     * Flow: EmailMessage → EmailTicketAdapter → same pipeline as submitTicket
      */
     private void onSimulateEmail() {
-        JDialog dialog = new JDialog(this, "Simulate Email", true);
-        dialog.setSize(400, 300);
-        dialog.setLocationRelativeTo(this);
-        dialog.setLayout(new GridBagLayout());
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(5, 5, 5, 5);
-        gbc.fill = GridBagConstraints.HORIZONTAL;
+        JTextField senderField  = new JTextField("client@corp.com");
+        JTextField subjectField = new JTextField("Bug: crash on login page");
+        JTextArea  bodyArea     = new JTextArea("Reproducible on iOS 17 — steps: ...", 3, 20);
 
-        JTextField senderField = new JTextField(20);
-        JTextField subjectField = new JTextField(20);
-        JTextArea bodyArea = new JTextArea(4, 20);
-        bodyArea.setLineWrap(true);
-        bodyArea.setWrapStyleWord(true);
-        JCheckBox urgentEmailCheck = new JCheckBox("Mark as Urgent");
+        Object[] fields = {
+            "Sender:",  senderField,
+            "Subject:", subjectField,
+            "Body:",    new JScrollPane(bodyArea)
+        };
 
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        dialog.add(new JLabel("Sender:"), gbc);
-        gbc.gridx = 1;
-        dialog.add(senderField, gbc);
+        int result = JOptionPane.showConfirmDialog(this, fields,
+                "Simulate Inbound Email", JOptionPane.OK_CANCEL_OPTION);
 
-        gbc.gridx = 0;
-        gbc.gridy = 1;
-        dialog.add(new JLabel("Subject:"), gbc);
-        gbc.gridx = 1;
-        dialog.add(subjectField, gbc);
+        if (result == JOptionPane.OK_OPTION) {
+            try {
+                EmailMessage email = new EmailMessage(
+                    senderField.getText(), subjectField.getText(), bodyArea.getText());
 
-        gbc.gridx = 0;
-        gbc.gridy = 2;
-        dialog.add(new JLabel("Body:"), gbc);
-        gbc.gridx = 1;
-        dialog.add(new JScrollPane(bodyArea), gbc);
+                // Facade uses EmailTicketAdapter internally — GUI is not aware of adapter
+                facade.submitFromEmail(email, urgentBox.isSelected());
+                refreshTable();
 
-        gbc.gridx = 1;
-        gbc.gridy = 3;
-        dialog.add(urgentEmailCheck, gbc);
-
-        JButton sendBtn = new JButton("Send Email");
-        sendBtn.addActionListener(e -> {
-            String sender = senderField.getText().trim();
-            String subject = subjectField.getText().trim();
-            String body = bodyArea.getText().trim();
-            if (sender.isEmpty() || subject.isEmpty()) {
-                JOptionPane.showMessageDialog(dialog, "Sender and Subject are required.", "Validation",
-                        JOptionPane.WARNING_MESSAGE);
-                return;
+            } catch (SecurityException ex) {
+                JOptionPane.showMessageDialog(this, "Access denied: " + ex.getMessage(),
+                    "Security", JOptionPane.ERROR_MESSAGE);
             }
-            EmailMessage email = new EmailMessage(sender, subject, body);
-            facade.submitFromEmail(email, urgentEmailCheck.isSelected());
+        }
+    }
+
+    /**
+     * Escalate the selected ticket using the chosen RoutingStrategy.
+     * Flow: Proxy check → Facade → State (escalate) → Strategy → Chain → Observer
+     */
+    private void onEscalate() {
+        Ticket selected = getSelectedTicket();
+        if (selected == null) return;
+
+        // Build the chosen strategy object from the dropdown selection
+        RoutingStrategy strategy = switch ((String) strategyCombo.getSelectedItem()) {
+            case "Urgent"     -> new UrgentRoutingStrategy();
+            case "Type-Based" -> new TypeBasedRoutingStrategy();
+            default           -> new StandardRoutingStrategy();
+        };
+
+        List<String> log = new ArrayList<>();
+        try {
+            facade.escalateTicket(selected, strategy, log);
             refreshTable();
-            refreshLog();
-            dialog.dispose();
-        });
-        gbc.gridx = 0;
-        gbc.gridy = 4;
-        gbc.gridwidth = 2;
-        gbc.fill = GridBagConstraints.NONE;
-        gbc.anchor = GridBagConstraints.CENTER;
-        dialog.add(sendBtn, gbc);
 
-        dialog.setVisible(true);
-    }
+            // Display the chain's decision log in an info dialog
+            JOptionPane.showMessageDialog(this,
+                String.join("\n", log), "Escalation Log", JOptionPane.INFORMATION_MESSAGE);
 
-    /**
-     * Handles the Escalate Selected button. Builds a fresh chain
-     * (L1 → L2 → Manager) and passes the selected ticket through it.
-     */
-    private void onEscalateSelected() {
-        int row = ticketTable.getSelectedRow();
-        if (row < 0) {
-            JOptionPane.showMessageDialog(this, "Please select a ticket to escalate.", "No Selection",
-                    JOptionPane.WARNING_MESSAGE);
-            return;
+        } catch (IllegalStateException ex) {
+            JOptionPane.showMessageDialog(this, "State error: " + ex.getMessage(),
+                "Invalid Operation", JOptionPane.WARNING_MESSAGE);
+        } catch (SecurityException ex) {
+            JOptionPane.showMessageDialog(this, "Access denied: " + ex.getMessage(),
+                "Security", JOptionPane.ERROR_MESSAGE);
         }
-        List<Ticket> tickets = TicketSystem.getInstance().getAllTickets();
-        Ticket ticket = tickets.get(row);
-
-        // Build a fresh chain each time
-        SupportHandler l1 = new Level1Handler(log);
-        SupportHandler l2 = new Level2Handler(log);
-        SupportHandler manager = new ManagerHandler(log);
-        l1.setNext(l2);
-        l2.setNext(manager);
-
-        log.add("--- Escalating Ticket #" + ticket.getId() + " ---");
-        l1.handle(ticket);
-
-        refreshTable();
-        refreshLog();
     }
 
     /**
-     * Handles the Resolve Selected button. Directly sets the selected
-     * ticket's status to RESOLVED.
+     * Resolve the selected ticket through the Proxy.
+     * Proxy enforces that only MANAGER/ADMIN can resolve escalated tickets.
      */
-    private void onResolveSelected() {
-        int row = ticketTable.getSelectedRow();
-        if (row < 0) {
-            JOptionPane.showMessageDialog(this, "Please select a ticket to resolve.", "No Selection",
-                    JOptionPane.WARNING_MESSAGE);
-            return;
+    private void onResolve() {
+        Ticket selected = getSelectedTicket();
+        if (selected == null) return;
+
+        try {
+            proxy.resolveTicket(selected); // Proxy checks role before delegating
+            refreshTable();
+        } catch (SecurityException ex) {
+            JOptionPane.showMessageDialog(this, "Access denied: " + ex.getMessage(),
+                "Security", JOptionPane.ERROR_MESSAGE);
         }
-        List<Ticket> tickets = TicketSystem.getInstance().getAllTickets();
-        Ticket ticket = tickets.get(row);
-        ticket.setStatus(TicketStatus.RESOLVED);
-        log.add("> Ticket #" + ticket.getId() + " manually RESOLVED.");
-        refreshTable();
-        refreshLog();
     }
 
     /**
-     * Handles the Clear Log button. Clears both the log list and the text area.
+     * Reopen a resolved ticket — transitions RESOLVED → OPEN via State pattern.
      */
-    private void onClearLog() {
-        log.clear();
-        logArea.setText("");
+    private void onReopen() {
+        Ticket selected = getSelectedTicket();
+        if (selected == null) return;
+
+        try {
+            behavioral.state.TicketContext ctx =
+                new behavioral.state.TicketContext(selected);
+            // Force the context into the correct state before calling reopen
+            // (TicketContext always starts in OpenState, so we replicate the current state)
+            selected.setStatus(creational.factory.TicketStatus.OPEN);
+            refreshTable();
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, ex.getMessage(),
+                "Invalid Operation", JOptionPane.WARNING_MESSAGE);
+        }
     }
 
-    // ======================== Refresh Helpers ========================
+    // ─────────────────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Refreshes the ticket table by clearing all rows and re-populating
-     * from the TicketSystem singleton.
-     */
+    /** Rebuild the table from the Singleton's current ticket list. */
     private void refreshTable() {
-        tableModel.setRowCount(0);
-        for (Ticket t : TicketSystem.getInstance().getAllTickets()) {
-            tableModel.addRow(new Object[] {
-                    t.getId(),
-                    t.getTypeLabel(),
-                    t.getPriority(),
-                    t.getStatus(),
-                    t.getTitle()
+        tableModel.setRowCount(0); // Clear all rows
+        for (Ticket t : creational.singleton.TicketSystem.getInstance().getAllTickets()) {
+            tableModel.addRow(new Object[]{
+                t.getId(),
+                t.getTitle(),
+                t.getTypeLabel(),
+                t.getPriority(),
+                t.getStatus()
             });
         }
     }
 
-    /**
-     * Refreshes the log text area with all messages from the shared log list.
-     */
-    private void refreshLog() {
-        StringBuilder sb = new StringBuilder();
-        for (String entry : log) {
-            sb.append(entry).append("\n");
+    /** Return the Ticket corresponding to the currently selected table row, or null. */
+    private Ticket getSelectedTicket() {
+        int row = ticketTable.getSelectedRow();
+        if (row < 0) {
+            JOptionPane.showMessageDialog(this, "Please select a ticket from the table.");
+            return null;
         }
-        logArea.setText(sb.toString());
-        logArea.setCaretPosition(logArea.getDocument().getLength());
+        // Column 0 holds the ticket ID — use it to look up the real Ticket object
+        int id = (int) tableModel.getValueAt(row, 0);
+        return creational.singleton.TicketSystem.getInstance().getAllTickets()
+                .stream().filter(t -> t.getId() == id).findFirst().orElse(null);
     }
 
-    // ======================== Custom Renderer ========================
-
     /**
-     * Custom table cell renderer that colors rows based on ticket state:
-     * <ul>
-     * <li>URGENT priority → light red background</li>
-     * <li>RESOLVED status → light green background</li>
-     * <li>All others → default white background</li>
-     * </ul>
+     * Custom cell renderer that colours rows for at-a-glance status recognition:
+     *   🔴 URGENT   → light red background
+     *   🟢 RESOLVED → light green background
+     *   🟡 ESCALATED → light yellow background
+     *   default     → white
      */
-    private class TicketCellRenderer extends DefaultTableCellRenderer {
+    private void applyTableRenderer() {
+        DefaultTableCellRenderer renderer = new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(
+                    JTable table, Object value, boolean isSelected,
+                    boolean hasFocus, int row, int column) {
 
-        /** Light red color for urgent tickets. */
-        private final Color URGENT_COLOR = new Color(255, 204, 204);
+                Component c = super.getTableCellRendererComponent(
+                        table, value, isSelected, hasFocus, row, column);
 
-        /** Light green color for resolved tickets. */
-        private final Color RESOLVED_COLOR = new Color(204, 255, 204);
+                if (!isSelected) {
+                    Object priorityVal = tableModel.getValueAt(row, 3); // Priority column
+                    Object statusVal   = tableModel.getValueAt(row, 4); // Status column
 
-        /**
-         * Returns the renderer component with the appropriate background color.
-         *
-         * @param table      the JTable
-         * @param value      the cell value
-         * @param isSelected whether the cell is selected
-         * @param hasFocus   whether the cell has focus
-         * @param row        the row index
-         * @param column     the column index
-         * @return the configured renderer component
-         */
-        @Override
-        public Component getTableCellRendererComponent(JTable table, Object value,
-                boolean isSelected, boolean hasFocus, int row, int column) {
-            Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-
-            if (!isSelected) {
-                String priority = table.getModel().getValueAt(row, 2).toString();
-                String status = table.getModel().getValueAt(row, 3).toString();
-
-                if (status.equals("RESOLVED")) {
-                    c.setBackground(RESOLVED_COLOR);
-                } else if (priority.equals("URGENT")) {
-                    c.setBackground(URGENT_COLOR);
-                } else {
-                    c.setBackground(Color.WHITE);
+                    if (TicketStatus.RESOLVED.name().equals(String.valueOf(statusVal))) {
+                        c.setBackground(new Color(198, 239, 206)); // Green
+                    } else if (TicketStatus.ESCALATED.name().equals(String.valueOf(statusVal))) {
+                        c.setBackground(new Color(255, 235, 156)); // Yellow
+                    } else if (Priority.URGENT.name().equals(String.valueOf(priorityVal))) {
+                        c.setBackground(new Color(255, 199, 206)); // Red
+                    } else {
+                        c.setBackground(Color.WHITE);
+                    }
                 }
+                return c;
             }
-            return c;
+        };
+
+        // Apply the renderer to every column in the table
+        for (int i = 0; i < COLUMNS.length; i++) {
+            ticketTable.getColumnModel().getColumn(i).setCellRenderer(renderer);
         }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Public accessors — used by Main.java to wire Observer listeners
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * @return The log text area — passed to LogPanelListener in Main.java.
+     */
+    public JTextArea getLogArea() { return logArea; }
+
+    /**
+     * @return The stats label — passed to StatisticsListener in Main.java.
+     */
+    public JLabel getStatsLabel() { return statsLabel; }
 }

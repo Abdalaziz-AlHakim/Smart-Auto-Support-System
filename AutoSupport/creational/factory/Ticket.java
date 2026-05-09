@@ -1,122 +1,78 @@
 package creational.factory;
 
-// TicketType, TicketStatus, TicketPriority are in the same package
-
 /**
- * Abstract base class for all support tickets.
- * <p>
- * Every ticket has an ID, title, description, type, status, and priority.
- * Concrete subclasses define specific ticket types (Bug, Complaint, etc.).
- * </p>
+ * Abstract base class for all ticket types in the AutoSupport system.
  *
- * <b>Design Pattern:</b> Factory Method (Product)
+ * PATTERN: Factory Method
+ * This is the "Product" in the Factory Method pattern. TicketFactory creates
+ * the correct subclass; callers always work through this abstract type.
+ *
+ * PATTERN: Decorator
+ * TicketDecorator also extends this class so it can wrap any Ticket
+ * transparently — the rest of the system cannot tell if a ticket has been
+ * decorated or not.
+ *
+ * Fields are protected so subclasses and decorators can read them directly.
  */
 public abstract class Ticket {
 
-    /** Unique identifier for this ticket. */
-    protected int id;
-
-    /** Short summary of the ticket issue. */
-    protected String title;
-
-    /** Detailed description of the ticket issue. */
-    protected String description;
-
-    /** The category/type of this ticket. */
-    protected TicketType type;
-
-    /** The current lifecycle status of this ticket. */
-    protected TicketStatus status;
-
-    /** The priority level of this ticket. */
-    protected TicketPriority priority;
+    protected final int id;           // Unique identifier assigned by TicketSystem
+    protected final String title;     // Short summary entered by the agent
+    protected final String description; // Full problem description
+    protected Priority priority;      // NORMAL by default; set to URGENT by Decorator
+    protected TicketStatus status;    // Lifecycle status; managed by State pattern
 
     /**
-     * Constructs a new Ticket with the given ID, title, and description.
-     * Status defaults to OPEN; priority defaults to NORMAL.
+     * Base constructor called by every concrete ticket subclass and TicketFactory.
      *
-     * @param id          unique ticket ID
-     * @param title       short summary
-     * @param description detailed description
+     * @param id          Unique ID from TicketSystem.generateId()
+     * @param title       Short summary of the issue
+     * @param description Full details of the issue
      */
     public Ticket(int id, String title, String description) {
         this.id = id;
         this.title = title;
         this.description = description;
-        this.status = TicketStatus.OPEN;
-        this.priority = TicketPriority.NORMAL;
+        this.priority = Priority.NORMAL; // Default priority; Decorator overrides this
+        this.status = TicketStatus.OPEN; // All tickets start in OPEN state
     }
 
+    // ── Abstract methods ─────────────────────────────────────────────────────
+
     /**
-     * Returns a human-readable label for this ticket's type.
-     *
-     * @return the type label string
+     * @return The TicketType enum value (BUG, COMPLAINT, etc.)
+     * Each subclass returns its own fixed type.
+     */
+    public abstract TicketType getType();
+
+    /**
+     * @return A human-readable label for display in the GUI table.
+     * UrgentTicketDecorator prefixes this with "[URGENT] ".
      */
     public abstract String getTypeLabel();
 
-    /**
-     * Returns the unique ticket ID.
-     *
-     * @return ticket ID
-     */
-    public int getId() { return id; }
+    // ── Getters ──────────────────────────────────────────────────────────────
 
-    /**
-     * Returns the ticket title.
-     *
-     * @return ticket title
-     */
-    public String getTitle() { return title; }
+    public int getId()               { return id; }
+    public String getTitle()         { return title; }
+    public String getDescription()   { return description; }
+    public Priority getPriority()    { return priority; }
+    public TicketStatus getStatus()  { return status; }
 
-    /**
-     * Returns the ticket description.
-     *
-     * @return ticket description
-     */
-    public String getDescription() { return description; }
+    // ── Setters ──────────────────────────────────────────────────────────────
 
-    /**
-     * Returns the ticket type enum value.
-     *
-     * @return ticket type
-     */
-    public TicketType getType() { return type; }
-
-    /**
-     * Returns the current ticket status.
-     *
-     * @return ticket status
-     */
-    public TicketStatus getStatus() { return status; }
-
-    /**
-     * Sets the ticket status.
-     *
-     * @param status the new status
-     */
+    /** Called by State classes (OpenState, InProgressState, etc.) during transitions. */
     public void setStatus(TicketStatus status) { this.status = status; }
 
-    /**
-     * Returns the ticket priority.
-     *
-     * @return ticket priority
-     */
-    public TicketPriority getPriority() { return priority; }
+    /** Called by UrgentTicketDecorator — elevates priority without subclassing. */
+    public void setPriority(Priority priority) { this.priority = priority; }
 
     /**
-     * Sets the ticket priority.
-     *
-     * @param priority the new priority
-     */
-    public void setPriority(TicketPriority priority) { this.priority = priority; }
-
-    /**
-     * Returns a formatted string representation of this ticket.
-     *
-     * @return string in the format: [#id] TypeLabel - title | status | priority
+     * Short display string used in the GUI ticket table.
+     * UrgentTicketDecorator prepends "🔴 " to this.
      */
     @Override
     public String toString() {
-        return "[#" + id + "] " + getTypeLabel() + " - " + title + " | " + status + " | " + priority;
+        return String.format("[#%d] %s (%s) — %s", id, title, getTypeLabel(), status);
     }
 }

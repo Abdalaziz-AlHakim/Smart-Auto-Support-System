@@ -1,63 +1,73 @@
 package structural.adapter;
 
-import creational.factory.TicketType;
 import creational.factory.Ticket;
 import creational.factory.TicketFactory;
-import creational.singleton.TicketSystem;
+import creational.factory.TicketType;
 
 /**
- * Adapter that converts an {@link EmailMessage} into a {@link Ticket}.
- * <p>
- * The email's subject is analyzed to infer the ticket type (Bug, Complaint,
- * Feature Request, or Inquiry). The email body and sender are combined into
- * the ticket description.
- * </p>
+ * Adapter that converts an incompatible EmailMessage into a Ticket.
  *
- * <b>Design Pattern:</b> Adapter (Adapter)
+ * PATTERN: Adapter (Object Adapter variant)
+ * EmailMessage is the Adaptee (external format we cannot change).
+ * TicketSource is the Target interface the system expects.
+ * This class wraps EmailMessage and implements TicketSource so the system
+ * can treat an email exactly like any other ticket source.
+ *
+ * Keyword detection logic lives here — centralised and isolated from
+ * both EmailMessage and TicketFactory, following the Single Responsibility Principle.
  */
 public class EmailTicketAdapter implements TicketSource {
 
-    /** The email message being adapted. */
-    private EmailMessage email;
+    /** The external email being adapted. */
+    private final EmailMessage email;
 
     /**
-     * Constructs a new EmailTicketAdapter for the given email.
-     *
-     * @param email the email message to adapt
+     * @param email The inbound email to convert. Must not be null.
      */
     public EmailTicketAdapter(EmailMessage email) {
         this.email = email;
     }
 
     /**
-     * Converts the stored {@link EmailMessage} into a {@link Ticket}.
-     * <p>
-     * The ticket type is inferred from keywords in the email subject:
-     * <ul>
-     *   <li>"bug", "error", "crash" → BUG</li>
-     *   <li>"complaint", "unhappy" → COMPLAINT</li>
-     *   <li>"feature", "request" → FEATURE_REQUEST</li>
-     *   <li>Otherwise → INQUIRY</li>
-     * </ul>
-     * </p>
+     * Convert the email into a typed Ticket by scanning the subject line for keywords.
      *
-     * @return a new Ticket created via the TicketFactory
+     * Detection rules (case-insensitive, first match wins):
+     *   • "bug", "error", "crash"    → BugTicket
+     *   • "complaint", "unhappy"     → ComplaintTicket
+     *   • "feature", "request"       → FeatureRequestTicket
+     *   • (anything else)            → InquiryTicket (safe default)
+     *
+     * Title  = email subject line
+     * Description = "From: <sender>\n\n<body>"
+     *
+     * @return A Ticket whose type is inferred from the email subject.
      */
     @Override
     public Ticket toTicket() {
-        // Infer type from subject keywords, default to Inquiry
-        TicketType type = TicketType.INQUIRY;
-        String subject = email.getSubject().toLowerCase();
-        if (subject.contains("bug") || subject.contains("error") || subject.contains("crash"))
+        // Normalise the subject to lower-case once for all comparisons
+        String subjectLower = email.getSubject().toLowerCase();
+
+        TicketType type;
+
+        if (subjectLower.contains("bug") || subjectLower.contains("error")
+                || subjectLower.contains("crash")) {
             type = TicketType.BUG;
-        else if (subject.contains("complaint") || subject.contains("unhappy"))
+
+        } else if (subjectLower.contains("complaint") || subjectLower.contains("unhappy")) {
             type = TicketType.COMPLAINT;
-        else if (subject.contains("feature") || subject.contains("request"))
+
+        } else if (subjectLower.contains("feature") || subjectLower.contains("request")) {
             type = TicketType.FEATURE_REQUEST;
 
-        String title = email.getSubject();
-        String description = "From: " + email.getSender() + "\n" + email.getBody();
+        } else {
+            // Default: treat ambiguous emails as general inquiries
+            type = TicketType.INQUIRY;
+        }
 
-        return TicketFactory.createTicket(type, title, description);
+        // Combine sender info + body into the description for full context
+        String description = "From: " + email.getSender() + "\n\n" + email.getBody();
+
+        // Delegate ticket creation to the Factory (it handles ID assignment)
+        return TicketFactory.createTicket(type, email.getSubject(), description);
     }
 }
