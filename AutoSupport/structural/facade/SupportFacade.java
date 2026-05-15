@@ -1,10 +1,6 @@
 package structural.facade;
 
-import behavioral.chain.SupportHandler;
-import behavioral.observer.TicketEvent;
-import behavioral.observer.TicketEventType;
 import behavioral.state.TicketContext;
-import behavioral.strategy.RoutingStrategy;
 import creational.factory.Ticket;
 import creational.factory.TicketFactory;
 import creational.factory.TicketStatus;
@@ -39,11 +35,7 @@ public class SupportFacade {
             ticket = new UrgentTicketDecorator(ticket);
         }
 
-        // Advance state: OPEN → IN_PROGRESS before registering
-        TicketContext ctx = new TicketContext(ticket);
-        ctx.startProgress();
-
-        // Register triggers Observer CREATED event
+        // Ticket starts in OPEN state (awaiting pickup)
         TicketSystem.getInstance().addTicket(ticket);
         return ticket;
     }
@@ -58,60 +50,52 @@ public class SupportFacade {
             ticket = new UrgentTicketDecorator(ticket);
         }
 
-        TicketContext ctx = new TicketContext(ticket);
-        ctx.startProgress();
+        // Ticket starts in OPEN state
         TicketSystem.getInstance().addTicket(ticket);
         return ticket;
     }
 
-    /**
-     * Escalate a ticket through the chosen RoutingStrategy chain.
-     *
-     * PATTERN: State — transitions are enforced through TicketContext:
-     *   • If OPEN → automatically advance to IN_PROGRESS first, then escalate.
-     *   • If IN_PROGRESS → escalate directly.
-     *   • Any other state (ESCALATED / RESOLVED) throws IllegalStateException.
-     *
-     * PATTERN: Strategy — the caller supplies a RoutingStrategy which builds the
-     * handler chain; then PATTERN: Chain of Responsibility resolves the ticket.
-     *
-     * @param ticket   The ticket to escalate (must be OPEN or IN_PROGRESS).
-     * @param strategy The routing strategy that determines the handler chain.
-     * @param log      Mutable list each handler appends its decision to.
-     * @throws IllegalStateException if the ticket cannot legally be escalated.
-     */
-    public void escalateTicket(Ticket ticket, RoutingStrategy strategy,
-                               List<String> log) {
-        TicketContext ctx = TicketContext.fromExisting(ticket);
-
-        // Auto-advance OPEN → IN_PROGRESS (required by State machine before escalate)
-        if (ticket.getStatus() == TicketStatus.OPEN) {
-            ctx.startProgress();
+    public void markAsUrgent(Ticket ticket) {
+        if (ticket.getPriority() != creational.factory.Priority.URGENT) {
+            Ticket urgentTicket = new UrgentTicketDecorator(ticket);
+            
+            TicketSystem.getInstance().updateTicket(urgentTicket);
+            
+            // Fire event to update UI
+            TicketSystem.getInstance().notifyListeners(
+                new behavioral.observer.TicketEvent(urgentTicket, behavioral.observer.TicketEventType.ESCALATED));
         }
-        // IN_PROGRESS → ESCALATED via the State machine
-        ctx.escalate();
-
-        // Notify observers that the ticket is now ESCALATED
-        TicketSystem.getInstance().notifyListeners(
-            new TicketEvent(ticket, TicketEventType.ESCALATED));
-
-        // Strategy builds the chain; chain resolves the ticket
-        SupportHandler chainHead = strategy.buildChain(ticket, log);
-        chainHead.handle(ticket, log);
     }
 
     /**
-     * Reopen a resolved ticket: RESOLVED → OPEN via the State machine.
-     * Uses fromExisting() so the context starts in ResolvedState, not OpenState.
-     *
-     * Fires REOPENED (not CREATED) so stats listeners can correctly decrement
-     * resolvedCount and increment openCount without double-counting.
-     *
-     * @throws IllegalStateException if the ticket is not currently RESOLVED.
+     * Move a ticket to the ESCALATED state and run a routing strategy.
+     * 
+     * Flow:
+     *  1. Advance status via State pattern (InProgress -> Escalated).
+     *  2. Build handler chain via Strategy pattern.
+     *  3. Execute chain via Chain of Responsibility.
+     *  4. Broadcast event via Observer.
      */
-    public void reopenTicket(Ticket ticket) {
-        TicketContext.fromExisting(ticket).reopen(); // RESOLVED → OPEN via State
+    public void escalateTicket(Ticket ticket, behavioral.strategy.RoutingStrategy strategy, List<String> log) {
+        // 1 — State Pattern: Change status to ESCALATED
+        // Use fromExisting() to ensure we start in the correct State object
+        TicketContext context = TicketContext.fromExisting(ticket);
+        
+        // If ticket is still OPEN, pick it up first (OPEN -> IN_PROGRESS)
+        if (ticket.getStatus() == TicketStatus.OPEN) {
+            context.startProgress();
+        }
+        
+        context.escalate(); // Moves status to ESCALATED
+
+        // 2 — Strategy & Chain: Route the ticket
+        // Strategy builds the chain; we then call handle() on the head
+        behavioral.chain.SupportHandler head = strategy.buildChain(ticket, log);
+        head.handle(ticket, log);
+
+        // 3 — Observer: Notify system of the change
         TicketSystem.getInstance().notifyListeners(
-            new TicketEvent(ticket, TicketEventType.REOPENED));
+            new behavioral.observer.TicketEvent(ticket, behavioral.observer.TicketEventType.ESCALATED)
+        );
     }
 }

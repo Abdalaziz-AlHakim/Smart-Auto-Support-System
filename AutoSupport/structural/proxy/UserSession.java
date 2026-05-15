@@ -30,7 +30,7 @@ public class UserSession {
     }
 
     /**
-     * Set the active user's role, called from the login panel in MainGUI.
+     * Set the active user's role, called from the login panel in MainGUI form.
      *
      * @param role The role the user selected at login.
      */

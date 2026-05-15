@@ -31,7 +31,7 @@ public abstract class TicketDecorator extends Ticket {
         this.wrapped = wrapped;
     }
 
-    // ── Default delegation — concrete decorators override only what they change ──
+    // Default delegation (concrete decorators override only what they change)
 
     @Override public TicketType getType()        { return wrapped.getType(); }
     @Override public String getTypeLabel()        { return wrapped.getTypeLabel(); }
