@@ -104,6 +104,18 @@ public class TicketSystem implements ITicketSystem {
     }
 
     /**
+     * Update an existing ticket (e.g., after wrapping it in a decorator).
+     */
+    public void updateTicket(Ticket newTicket) {
+        for (int i = 0; i < tickets.size(); i++) {
+            if (tickets.get(i).getId() == newTicket.getId()) {
+                tickets.set(i, newTicket);
+                break;
+            }
+        }
+    }
+
+    /**
      * Mark a ticket as RESOLVED and fire a RESOLVED event.
      *
      * PATTERN: State
@@ -146,5 +158,31 @@ public class TicketSystem implements ITicketSystem {
      */
     public int generateId() {
         return idCounter++;
+    }
+
+    /**
+     * Manually pick up a ticket: OPEN → IN_PROGRESS via the State machine.
+     *
+     * PATTERN: State
+     * Allows an agent to take ownership of an open ticket before resolving
+     * or escalating it.
+     */
+    @Override
+    public void startProgress(Ticket t) {
+        TicketContext.fromExisting(t).startProgress();
+        notifyListeners(new TicketEvent(t, TicketEventType.PICKED_UP));
+    }
+
+    /**
+     * Reopen a resolved ticket: RESOLVED → OPEN via the State machine.
+     * Uses fromExisting() so the context starts in ResolvedState, not OpenState.
+     *
+     * Fires REOPENED (not CREATED) so stats listeners can correctly decrement
+     * resolvedCount and increment openCount without double-counting.
+     */
+    @Override
+    public void reopenTicket(Ticket t) {
+        TicketContext.fromExisting(t).reopen();
+        notifyListeners(new TicketEvent(t, TicketEventType.REOPENED));
     }
 }

@@ -19,7 +19,7 @@ GUI checks are easily bypassed and scattered. A structural Proxy centralises all
 | `ITicketSystem` | Shared interface so GUI always programs to the interface | `TicketSystem`, `TicketSystemProxy` |
 | `TicketSystemProxy` | Intercepts calls, checks `UserSession` role, then delegates | `ITicketSystem`, `TicketSystem`, `UserSession` |
 | `UserSession` | Singleton holding the logged-in user and their `UserRole` | `TicketSystemProxy`, `MainGUI` |
-| `UserRole` | Enum: `AGENT_L1`, `AGENT_L2`, `MANAGER`, `ADMIN` | `UserSession`, `TicketSystemProxy` |
+| `UserRole` | Enum: `AGENT_L1`, `AGENT_L2`, `MANAGER` | `UserSession`, `TicketSystemProxy` |
 
 #### UML — Proxy
 
@@ -54,7 +54,6 @@ classDiagram
         AGENT_L1
         AGENT_L2
         MANAGER
-        ADMIN
     }
     TicketSystem ..|> ITicketSystem
     TicketSystemProxy ..|> ITicketSystem
@@ -81,9 +80,9 @@ Command encapsulates a request as an object for undo/redo/queue purposes. Escala
 | Class | Role | Connected To |
 |---|---|---|
 | `SupportHandler` | Abstract base with `setNext()` and `handle()` | `Level1Handler`, `Level2Handler`, `ManagerHandler` |
-| `Level1Handler` | Resolves `INQUIRY` only; passes all others up | `SupportHandler`, `Ticket`, `TicketSystem` |
-| `Level2Handler` | Resolves `BUG` and `FEATURE_REQUEST`; passes `COMPLAINT` up | `SupportHandler`, `Ticket`, `TicketSystem` |
-| `ManagerHandler` | Final fallback — resolves everything | `SupportHandler`, `Ticket`, `TicketSystem` |
+| `Level1Handler` | Accepts `INQUIRY` for review; passes all others up | `SupportHandler`, `Ticket`, `TicketSystem` |
+| `Level2Handler` | Accepts `BUG` and `FEATURE_REQUEST` for review; passes `COMPLAINT` up | `SupportHandler`, `Ticket`, `TicketSystem` |
+| `ManagerHandler` | Final fallback — accepts everything for review | `SupportHandler`, `Ticket`, `TicketSystem` |
 
 #### UML — Chain of Responsibility
 
@@ -461,9 +460,9 @@ User Action (GUI)
            [Strategy] — selects & builds escalation chain
                   │
                   ▼
-           [Chain] — L1 / L2 / Manager handle or pass up
+           [Chain] — L1 / L2 / Manager accept or pass up
                   │
-                  └──► [Observer] fires ESCALATED or RESOLVED
+                  └──► (Ticket remains ESCALATED until manually resolved via Proxy)
 ```
 
 ---
