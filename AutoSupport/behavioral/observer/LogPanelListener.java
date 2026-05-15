@@ -3,7 +3,7 @@ package behavioral.observer;
 import javax.swing.JTextArea;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
-
+// Updated by Fady
 /**
  * Observer that appends ticket events to the GUI's real-time log panel.
  *

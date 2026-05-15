@@ -1,7 +1,7 @@
 package behavioral.observer;
 
 import javax.swing.JLabel;
-
+// Updated by Fady
 /**
  * Observer that maintains live ticket statistics displayed in the GUI status bar.
  *
