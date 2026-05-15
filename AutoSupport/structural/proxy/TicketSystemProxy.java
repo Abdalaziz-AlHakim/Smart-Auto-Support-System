@@ -53,9 +53,9 @@ public class TicketSystemProxy implements ITicketSystem {
      * Resolve a ticket — restricted based on ticket escalation level.
      *
      * Rules:
-     *   • AGENT_L1 cannot resolve tickets that have been escalated to Manager level.
-     *   • AGENT_L2 cannot resolve tickets at Manager level either.
-     *   • MANAGER and ADMIN may resolve any ticket.
+     *   • AGENT_L1 can not resolve tickets that have been escalated to Manager level.
+     *   • AGENT_L2 can not resolve tickets at Manager level either.
+     *   • MANAGER and ADMIN can resolve any ticket.
      *
      * @param t The ticket to resolve.
      * @throws SecurityException if the current role lacks permission.

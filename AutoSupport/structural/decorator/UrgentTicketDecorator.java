@@ -44,7 +44,7 @@ public class UrgentTicketDecorator extends TicketDecorator {
 
     /**
      * Prepends a red circle emoji so the GUI table row is instantly recognisable.
-     * Example: "[#3] Safari crash (Bug) — OPEN" → "🔴 [#3] Safari crash ..."
+     * Example: "[#3] App crash (Bug) — OPEN" → "🔴 [#3] App crash ..."
      */
     @Override
     public String toString() {
