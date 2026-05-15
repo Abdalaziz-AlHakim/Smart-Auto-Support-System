@@ -26,13 +26,7 @@ public class ManagerHandler extends SupportHandler {
      */
     @Override
     public void handle(Ticket ticket, List<String> log) {
-        // Manager can always resolve — no further escalation possible
-        ticket.setStatus(TicketStatus.RESOLVED);
-        log.add("Manager: RESOLVED " + ticket.getType()
-                + " ticket #" + ticket.getId() + " (final authority).");
-
-        // Notify all observers of the final resolution
-        TicketSystem.getInstance().notifyListeners(
-            new TicketEvent(ticket, TicketEventType.RESOLVED));
+        log.add("✅ Manager: Accepted " + ticket.getType()
+                + " ticket #" + ticket.getId() + " for review (final authority).");
     }
 }

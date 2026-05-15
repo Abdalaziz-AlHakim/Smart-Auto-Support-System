@@ -20,11 +20,8 @@ public class Level2Handler extends SupportHandler {
     public void handle(Ticket ticket, List<String> log) {
         if (ticket.getType() == TicketType.BUG
                 || ticket.getType() == TicketType.FEATURE_REQUEST) {
-            ticket.setStatus(TicketStatus.RESOLVED);
-            log.add("✅ L2 Agent: RESOLVED " + ticket.getType()
-                    + " ticket #" + ticket.getId());
-            TicketSystem.getInstance().notifyListeners(
-                new TicketEvent(ticket, TicketEventType.RESOLVED));
+            log.add("✅ L2 Agent: Accepted " + ticket.getType()
+                    + " ticket #" + ticket.getId() + " for review.");
         } else {
             log.add("➡ L2 Agent: Cannot handle " + ticket.getType()
                     + " — passing to Manager.");

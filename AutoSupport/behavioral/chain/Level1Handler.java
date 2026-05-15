@@ -21,10 +21,7 @@ public class Level1Handler extends SupportHandler {
     @Override
     public void handle(Ticket ticket, List<String> log) {
         if (ticket.getType() == TicketType.INQUIRY) {
-            ticket.setStatus(TicketStatus.RESOLVED);
-            log.add("✅ L1 Agent: RESOLVED Inquiry ticket #" + ticket.getId());
-            TicketSystem.getInstance().notifyListeners(
-                new TicketEvent(ticket, TicketEventType.RESOLVED));
+            log.add("✅ L1 Agent: Accepted Inquiry ticket #" + ticket.getId() + " for review.");
         } else {
             // Cannot handle — pass to L2 (no extra ESCALATED event; Facade already fired it)
             log.add("➡ L1 Agent: Cannot handle " + ticket.getType() + " — passing to L2.");

@@ -27,9 +27,8 @@ public class OpenState implements TicketState {
 
     @Override
     public void resolve(TicketContext ctx) {
-        // Cannot resolve a ticket that no one has worked on
-        throw new IllegalStateException(
-            "Cannot resolve an OPEN ticket. Call startProgress() first.");
+        ctx.getTicket().setStatus(TicketStatus.RESOLVED);
+        ctx.setState(new ResolvedState());
     }
 
     @Override
