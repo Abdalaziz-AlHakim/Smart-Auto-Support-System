@@ -1,0 +1,150 @@
+classDiagram
+    %% SINGLETON & PROXY
+    class ITicketSystem {
+        <<interface>>
+        +addTicket(Ticket)
+        +getAllTickets() List~Ticket~
+        +resolveTicket(Ticket)
+        +startProgress(Ticket)
+        +reopenTicket(Ticket)
+    }
+    class TicketSystem {
+        <<Singleton>>
+        -static instance: TicketSystem
+        -tickets: List~Ticket~
+        -listeners: List~TicketEventListener~
+        +getInstance() TicketSystem
+        +subscribe(TicketEventListener)
+        +notifyListeners(TicketEvent)
+    }
+    class TicketSystemProxy {
+        -realSystem: TicketSystem
+    }
+    
+    ITicketSystem <|.. TicketSystem
+    ITicketSystem <|.. TicketSystemProxy
+    TicketSystemProxy --> TicketSystem : "delegates to"
+    TicketSystemProxy ..> UserSession : "checks role"
+
+    %% FACTORY
+    class TicketFactory {
+        +createTicket(TicketType, title, desc) Ticket
+    }
+    class Ticket {
+        <<abstract>>
+        -id: int
+        -title: String
+        -status: TicketStatus
+        +getType() TicketType
+        +getPriority() Priority
+    }
+    class BugTicket
+    class ComplaintTicket
+    class InquiryTicket
+    
+    Ticket <|-- BugTicket
+    Ticket <|-- ComplaintTicket
+    Ticket <|-- InquiryTicket
+    TicketFactory ..> Ticket : "creates"
+
+    %% DECORATOR
+    class TicketDecorator {
+        <<abstract>>
+        #wrapped: Ticket
+    }
+    class UrgentTicketDecorator {
+        +getPriority() Priority
+        +getTypeLabel() String
+    }
+    
+    Ticket <|-- TicketDecorator
+    TicketDecorator o-- Ticket : "wraps"
+    TicketDecorator <|-- UrgentTicketDecorator
+
+    %% ADAPTER
+    class EmailMessage {
+        -sender: String
+        -subject: String
+        -body: String
+    }
+    class EmailTicketAdapter {
+        -email: EmailMessage
+        +toTicket() Ticket
+    }
+    EmailTicketAdapter --> EmailMessage : "adapts"
+    EmailTicketAdapter ..> TicketFactory : "uses"
+
+    %% FACADE
+    class SupportFacade {
+        +submitTicket(...) Ticket
+        +submitFromEmail(...) Ticket
+        +markAsUrgent(Ticket)
+        +escalateTicket(Ticket, log)
+    }
+    SupportFacade ..> TicketFactory
+    SupportFacade ..> TicketSystem
+    SupportFacade ..> EmailTicketAdapter
+    SupportFacade ..> UrgentTicketDecorator
+    SupportFacade ..> TicketContext
+
+    %% STATE
+    class TicketContext {
+        -currentState: TicketState
+        +escalate()
+        +resolve()
+        +reopen()
+    }
+    class TicketState {
+        <<interface>>
+        +escalate(TicketContext)
+        +resolve(TicketContext)
+        +reopen(TicketContext)
+    }
+    class OpenState
+    class InProgressState
+    class EscalatedState
+    class ResolvedState
+
+    TicketContext *-- TicketState : "has state"
+    TicketContext --> Ticket : "mutates"
+    TicketState <|.. OpenState
+    TicketState <|.. InProgressState
+    TicketState <|.. EscalatedState
+    TicketState <|.. ResolvedState
+
+    %% OBSERVER
+    class TicketEventListener {
+        <<interface>>
+        +onTicketEvent(TicketEvent)
+    }
+    class TicketEvent {
+        -ticket: Ticket
+        -type: TicketEventType
+    }
+    class AppState {
+        +onTicketEvent(TicketEvent)
+    }
+    class StatisticsListener {
+        +onTicketEvent(TicketEvent)
+    }
+    
+    TicketSystem o-- TicketEventListener : "notifies"
+    TicketEventListener <|.. AppState
+    TicketEventListener <|.. StatisticsListener
+    TicketEventListener ..> TicketEvent : "receives"
+
+    %% CHAIN OF RESPONSIBILITY
+    class SupportHandler {
+        <<abstract>>
+        -next: SupportHandler
+        +setNext(SupportHandler) SupportHandler
+        +handle(Ticket, log)
+    }
+    class Level1Handler
+    class Level2Handler
+    class ManagerHandler
+
+    SupportHandler o-- SupportHandler : "next"
+    SupportHandler <|-- Level1Handler
+    SupportHandler <|-- Level2Handler
+    SupportHandler <|-- ManagerHandler

@@ -41,6 +41,7 @@ public class LogPanelListener implements TicketEventListener {
             case ESCALATED -> "⬆";
             case RESOLVED  -> "✔";
             case REOPENED  -> "♻";
+            case PICKED_UP -> "🧤";
         };
 
         String time = LocalTime.now().format(TIME_FMT);

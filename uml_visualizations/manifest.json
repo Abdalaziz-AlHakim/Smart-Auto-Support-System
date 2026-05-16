@@ -1,0 +1,42 @@
+[
+  {
+    "title": "Full System UML Diagram & Pattern Relationships",
+    "file": "01-full-system-uml-diagram-pattern-relationships.mmd"
+  },
+  {
+    "title": "Singleton (Creational)",
+    "file": "02-singleton-creational.mmd"
+  },
+  {
+    "title": "Factory Method (Creational)",
+    "file": "03-factory-method-creational.mmd"
+  },
+  {
+    "title": "Facade (Structural)",
+    "file": "04-facade-structural.mmd"
+  },
+  {
+    "title": "Adapter (Structural)",
+    "file": "05-adapter-structural.mmd"
+  },
+  {
+    "title": "Decorator (Structural)",
+    "file": "06-decorator-structural.mmd"
+  },
+  {
+    "title": "Proxy (Structural)",
+    "file": "07-proxy-structural.mmd"
+  },
+  {
+    "title": "State (Behavioral)",
+    "file": "08-state-behavioral.mmd"
+  },
+  {
+    "title": "Observer (Behavioral)",
+    "file": "09-observer-behavioral.mmd"
+  },
+  {
+    "title": "Chain of Responsibility (Behavioral)",
+    "file": "10-chain-of-responsibility-behavioral.mmd"
+  }
+]

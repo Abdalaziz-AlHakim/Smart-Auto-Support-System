@@ -1,0 +1,10 @@
+classDiagram
+    class SupportHandler { <<abstract>> -next: SupportHandler }
+    class Level1Handler
+    class Level2Handler
+    class ManagerHandler
+    
+    SupportHandler o-- SupportHandler : "next"
+    SupportHandler <|-- Level1Handler
+    SupportHandler <|-- Level2Handler
+    SupportHandler <|-- ManagerHandler

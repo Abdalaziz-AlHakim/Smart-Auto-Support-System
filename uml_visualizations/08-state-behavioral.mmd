@@ -1,0 +1,9 @@
+classDiagram
+    class TicketContext { -state: TicketState }
+    class TicketState { <<interface>> +escalate(), +resolve() }
+    class OpenState
+    class InProgressState
+    
+    TicketContext *-- TicketState
+    TicketState <|.. OpenState
+    TicketState <|.. InProgressState

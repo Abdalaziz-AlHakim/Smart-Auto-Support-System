@@ -50,12 +50,13 @@ public class TicketSystemProxy implements ITicketSystem {
     }
 
     /**
-     * Resolve a ticket — restricted based on ticket escalation level.
+     * Resolve a ticket — restricted based on ticket type and escalation level.
      *
      * Rules:
-     *   • AGENT_L1 can not resolve tickets that have been escalated to Manager level.
-     *   • AGENT_L2 can not resolve tickets at Manager level either.
-     *   • MANAGER and ADMIN can resolve any ticket.
+     *   • MANAGER can resolve any ticket.
+     *   • AGENT_L1 can only resolve INQUIRY tickets.
+     *   • AGENT_L2 can resolve INQUIRY, BUG, and FEATURE_REQUEST.
+     *   • No L1/L2 agent can resolve an ESCALATED ticket.
      *
      * @param t The ticket to resolve.
      * @throws SecurityException if the current role lacks permission.
@@ -63,13 +64,71 @@ public class TicketSystemProxy implements ITicketSystem {
     @Override
     public void resolveTicket(Ticket t) {
         UserRole role = UserSession.getInstance().getRole();
+        
+        // Manager can do anything, no further checks needed for them
+        if (role != UserRole.MANAGER) {
+            // 1. Escalation check
+            if (t.getStatus() == TicketStatus.ESCALATED) {
+                throw new SecurityException("Role " + role + " cannot resolve an ESCALATED ticket.");
+            }
 
-        // Manager-escalated tickets require MANAGER or ADMIN to close
-        if (t.getStatus() == TicketStatus.ESCALATED
-                && (role == UserRole.AGENT_L1 || role == UserRole.AGENT_L2)) {
-            throw new SecurityException(
-                "Role " + role + " cannot resolve a manager-level escalation.");
+            // Priority check for URGENT tickets
+            if (t.getPriority() == creational.factory.Priority.URGENT) {
+                throw new SecurityException("Role " + role + " cannot resolve URGENT tickets.");
+            }
+
+            // 2. Ticket Type check
+            creational.factory.TicketType type = t.getType();
+            if (role == UserRole.AGENT_L1 && type != creational.factory.TicketType.INQUIRY) {
+                throw new SecurityException("Role AGENT_L1 can only resolve INQUIRY tickets.");
+            }
+            if (role == UserRole.AGENT_L2 && type == creational.factory.TicketType.COMPLAINT) {
+                throw new SecurityException("Role AGENT_L2 cannot resolve COMPLAINT tickets.");
+            }
         }
+
         real.resolveTicket(t); // Approved — delegate to the real system
+    }
+
+    /**
+     * Pick up a ticket to start working on it.
+     * Restricts access based on the ticket type.
+     */
+    @Override
+    public void startProgress(Ticket t) {
+        UserRole role = UserSession.getInstance().getRole();
+        
+        if (role != UserRole.MANAGER) {
+            creational.factory.TicketType type = t.getType();
+            if (role == UserRole.AGENT_L1 && type != creational.factory.TicketType.INQUIRY) {
+                throw new SecurityException("Role AGENT_L1 can only pick up INQUIRY tickets.");
+            }
+            if (role == UserRole.AGENT_L2 && type == creational.factory.TicketType.COMPLAINT) {
+                throw new SecurityException("Role AGENT_L2 cannot pick up COMPLAINT tickets.");
+            }
+        }
+        
+        real.startProgress(t);
+    }
+
+    /**
+     * Reopen a ticket.
+     * Restricts access based on the ticket type.
+     */
+    @Override
+    public void reopenTicket(Ticket t) {
+        UserRole role = UserSession.getInstance().getRole();
+        
+        if (role != UserRole.MANAGER) {
+            creational.factory.TicketType type = t.getType();
+            if (role == UserRole.AGENT_L1 && type != creational.factory.TicketType.INQUIRY) {
+                throw new SecurityException("Role AGENT_L1 can only reopen INQUIRY tickets.");
+            }
+            if (role == UserRole.AGENT_L2 && type == creational.factory.TicketType.COMPLAINT) {
+                throw new SecurityException("Role AGENT_L2 cannot reopen COMPLAINT tickets.");
+            }
+        }
+        
+        real.reopenTicket(t);
     }
 }

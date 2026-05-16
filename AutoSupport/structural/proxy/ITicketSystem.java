@@ -9,7 +9,7 @@ import java.util.List;
  * PATTERN: Proxy
  * The GUI and Facade always program to this interface, never to the concrete
  * TicketSystem. This allows TicketSystemProxy to intercept every call
- * and enforce role-based security without the caller knowing.
+ * and enforce role-based security without the caller ever knowing.
  */
 public interface ITicketSystem {
 
@@ -30,4 +30,16 @@ public interface ITicketSystem {
      * The Proxy restricts this to MANAGER / ADMIN for manager-level escalations.
      */
     void resolveTicket(Ticket t);
+
+    /**
+     * Pick up a ticket to start working on it.
+     * The Proxy restricts this based on ticket type and user role.
+     */
+    void startProgress(Ticket t);
+
+    /**
+     * Reopen a resolved ticket.
+     * The Proxy restricts this based on ticket type and user role.
+     */
+    void reopenTicket(Ticket t);
 }

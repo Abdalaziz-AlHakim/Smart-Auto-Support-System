@@ -1,0 +1,433 @@
+# AutoSupport: System Documentation & Final Report
+
+## 1. Project Idea / Introduction
+
+**AutoSupport** is a modern, automated ticketing and customer support dashboard designed to manage the lifecycle of user inquiries, bugs, and complaints. The project serves as a robust demonstration of software architecture, built entirely around classic Object-Oriented Design Patterns. By transitioning from a traditional Swing-based interface to a reactive Compose Multiplatform GUI, the system simulates a real-world, enterprise-level application where different support tiers (Level 1, Level 2, and Managers) collaborate to resolve customer issues.
+
+The core architecture decouples the user interface from business logic, ensuring that ticket creation, role-based security validation, dynamic priority escalation, and lifecycle state management are all handled predictably and safely by the underlying Java backend.
+
+---
+
+## 2. Objectives
+
+*   **Demonstrate Architectural Mastery:** Seamlessly integrate 9 distinct Gang of Four (GoF) design patterns into a single cohesive system without over-engineering.
+*   **Enforce Role-Based Security:** Prevent unauthorized actions (e.g., a Level 1 agent attempting to resolve an escalated complaint) at the system level, irrespective of the UI.
+*   **Automate Workflows:** Automatically route incoming issues to the appropriate support tier based on ticket type and urgency.
+*   **Provide Real-Time Observability:** Ensure that all components of the application (logs, statistics, and dashboards) react instantly to state changes without tightly coupling the backend to the UI.
+*   **Maintain State Integrity:** Guarantee that tickets follow a strict, legal lifecycle (e.g., `OPEN` → `IN_PROGRESS` → `ESCALATED` → `RESOLVED`), blocking invalid transitions.
+
+---
+
+## 3. Design Patterns Explained
+
+The system implements the following **9 Design Patterns**:
+
+### Creational Patterns
+1.  **Singleton (`TicketSystem`)**
+    Ensures that only one global registry exists for all tickets. It acts as the single source of truth for ticket data and the central event bus for system notifications.
+2.  **Factory Method (`TicketFactory`)**
+    Encapsulates the instantiation logic for various ticket types. Instead of using `new BugTicket()`, the system asks the factory to produce the correct subclass based on an enum, ensuring new ticket types can be added without modifying existing client code.
+
+### Structural Patterns
+3.  **Facade (`SupportFacade`)**
+    Provides a simplified, unified interface to the complex subsystems (Factory, Decorator, State). The GUI only talks to the Facade to submit tickets or mark them as urgent, hiding the underlying pipeline complexity.
+4.  **Adapter (`EmailTicketAdapter`)**
+    Acts as a bridge between incompatible interfaces. It takes a raw `EmailMessage` and converts it into a `Ticket` by scanning the email subject for keywords (like "crash" or "complaint") to automatically determine the ticket type.
+5.  **Decorator (`UrgentTicketDecorator`)**
+    Dynamically adds urgency metadata (changing priority and appending "🔴 [URGENT]" to labels) to any ticket object at runtime without altering the base `Ticket` class or creating a massive hierarchy of subclasses (e.g., avoiding `UrgentBugTicket`).
+6.  **Proxy (`TicketSystemProxy`)**
+    Acts as a protective wrapper around the real `TicketSystem`. It intercepts every sensitive request (like resolving or reopening a ticket) and verifies the current user's role against strict permission rules before allowing the operation to proceed.
+
+### Behavioral Patterns
+7.  **State (`TicketContext` & `TicketState`)**
+    Models the ticket lifecycle. Instead of massive `switch/if` statements checking if a ticket is open or resolved, the ticket's behavior changes dynamically based on its internal state object (`OpenState`, `ResolvedState`). It mathematically guarantees illegal transitions are blocked.
+8.  **Observer (`TicketEventListener`)**
+    Enables a publish/subscribe architecture. When a ticket is created, escalated, or resolved, the `TicketSystem` broadcasts a `TicketEvent`. UI components (like the log panel and statistics counter) listen and update automatically without the backend knowing they exist.
+9.  **Chain of Responsibility (`SupportHandler`)**
+    Passes tickets along a hierarchical chain of support tiers (Level 1 → Level 2 → Manager). Each handler decides if it has the authority/ability to resolve the ticket; if not, it automatically passes it to the next handler in the chain.
+
+---
+
+## 4. Full System UML Diagram & Pattern Relationships
+
+```mermaid
+classDiagram
+    %% ── CORE ──────────────────────────────────────────────────────────────
+    class ITicketSystem { <<interface>> }
+    class TicketSystem {
+        -static instance
+        -List~Ticket~ tickets
+        -List~TicketEventListener~ listeners
+        +getInstance()
+        +addTicket()
+        +subscribe()
+        +notifyListeners()
+    }
+    class UserSession { -static instance; -UserRole role }
+    class UserRole { <<enumeration>> }
+    class TicketSystemProxy { -TicketSystem real }
+
+    ITicketSystem <|.. TicketSystem
+    ITicketSystem <|.. TicketSystemProxy
+    TicketSystemProxy --> TicketSystem
+    TicketSystemProxy --> UserSession
+    UserSession --> UserRole
+
+    %% ── FACTORY ──────────────────────────────────────────────────────────
+    class Ticket { <<abstract>> }
+    class BugTicket
+    class ComplaintTicket
+    class FeatureRequestTicket
+    class InquiryTicket
+    class TicketFactory
+
+    Ticket <|-- BugTicket
+    Ticket <|-- ComplaintTicket
+    Ticket <|-- FeatureRequestTicket
+    Ticket <|-- InquiryTicket
+    TicketFactory ..> Ticket : creates
+
+    %% ── DECORATOR ────────────────────────────────────────────────────────
+    class TicketDecorator { #Ticket wrapped }
+    class UrgentTicketDecorator
+    Ticket <|-- TicketDecorator
+    TicketDecorator <|-- UrgentTicketDecorator
+    TicketDecorator --> Ticket
+
+    %% ── ADAPTER ──────────────────────────────────────────────────────────
+    class TicketSource { <<interface>> }
+    class EmailMessage
+    class EmailTicketAdapter
+    TicketSource <|.. EmailTicketAdapter
+    EmailTicketAdapter --> EmailMessage
+    EmailTicketAdapter ..> TicketFactory
+
+    %% ── FACADE ───────────────────────────────────────────────────────────
+    class SupportFacade {
+        +submitTicket()
+        +submitFromEmail()
+        +escalateTicket()
+    }
+    SupportFacade --> TicketFactory
+    SupportFacade --> UrgentTicketDecorator
+    SupportFacade --> TicketSystem
+    SupportFacade --> EmailTicketAdapter
+    SupportFacade --> TicketSystemProxy
+
+    %% ── OBSERVER ─────────────────────────────────────────────────────────
+    class TicketEventListener { <<interface>> }
+    class TicketEvent
+    class TicketEventType { <<enumeration>> }
+    class LogPanelListener
+    class ConsoleNotificationListener
+    class StatisticsListener
+    TicketEventListener <|.. LogPanelListener
+    TicketEventListener <|.. ConsoleNotificationListener
+    TicketEventListener <|.. StatisticsListener
+    TicketSystem --> TicketEventListener : notifies
+    TicketEvent --> TicketEventType
+
+    %% ── STATE ────────────────────────────────────────────────────────────
+    class TicketState { <<interface>> }
+    class OpenState
+    class InProgressState
+    class EscalatedState
+    class ResolvedState
+    class TicketContext { -TicketState currentState }
+    TicketState <|.. OpenState
+    TicketState <|.. InProgressState
+    TicketState <|.. EscalatedState
+    TicketState <|.. ResolvedState
+    TicketContext --> TicketState
+    TicketContext --> Ticket
+    SupportFacade --> TicketContext
+
+    %% ── CHAIN ────────────────────────────────────────────────────────────
+    class SupportHandler { <<abstract>> #SupportHandler next }
+    class Level1Handler
+    class Level2Handler
+    class ManagerHandler
+    SupportHandler <|-- Level1Handler
+    SupportHandler <|-- Level2Handler
+    SupportHandler <|-- ManagerHandler
+    SupportHandler --> SupportHandler
+```
+
+### 4.1 Full System UML Explanation & Relationships
+
+The Full System UML illustrates how the 9 design patterns interact to form a cohesive ticketing pipeline. The architecture is divided into the core domain, GUI interaction, and event handling.
+
+**Key Relationships Between Patterns:**
+1. **Facade to Subsystems:** The `SupportFacade` acts as the single entry point for the UI. It orchestrates object creation via the **Factory** (`TicketFactory`), priority elevation via the **Decorator** (`UrgentTicketDecorator`), data transformation via the **Adapter** (`EmailTicketAdapter`), and state transitions via the **State** (`TicketContext`). 
+2. **Proxy to Singleton:** The `TicketSystemProxy` wraps the global **Singleton** (`TicketSystem`). Whenever the GUI attempts a privileged action like resolving a ticket, it goes through the Proxy first. The Proxy validates the user's role and, if authorized, delegates the call to the Singleton.
+3. **State to Ticket:** The `TicketContext` wraps a `Ticket` and relies on a `TicketState` object to manage transitions. The Facade delegates lifecycle actions to the Context, which ensures the transition rules (e.g., OPEN to IN_PROGRESS) are mathematically strictly followed.
+4. **Singleton to Observer:** The `TicketSystem` acts as the Subject in the **Observer** pattern. When the Proxy or Facade successfully mutates a ticket within the Singleton, the Singleton notifies all registered `TicketEventListener` instances (like `AppState` or `StatisticsListener`) to update the UI reactively.
+5. **Chain of Responsibility to Singleton:** When an issue is escalated, it flows through the `SupportHandler` chain. Handlers (Level 1, Level 2, Manager) interact with the `TicketSystem` to update the ticket's state or logs as they attempt to resolve it.
+
+---
+
+## 5. Detailed Pattern Breakdown: UML & Justifications
+
+### 5.1 Singleton (Creational)
+**Role:** `TicketSystem` manages the global list of tickets and registered observers.
+
+```mermaid
+classDiagram
+    class TicketSystem {
+        <<Singleton>>
+        -static instance: TicketSystem
+        -tickets: List~Ticket~
+        +getInstance() TicketSystem
+        +addTicket(Ticket)
+    }
+```
+
+**Why Singleton and not static methods/variables?**
+A Singleton allows `TicketSystem` to implement an interface (`ITicketSystem`) and serve as the Subject for the Observer pattern. Static classes cannot implement interfaces or participate easily in polymorphism, which is required by the Proxy pattern to substitute the real system transparently.
+
+### 5.2 Factory Method (Creational)
+**Role:** `TicketFactory` centralizes creation of specific ticket types based on an enum.
+
+```mermaid
+classDiagram
+    class TicketFactory {
+        +createTicket(type, title, desc) Ticket
+    }
+    class Ticket { <<abstract>> }
+    class BugTicket
+    class ComplaintTicket
+    class FeatureRequestTicket
+    class InquiryTicket
+    
+    Ticket <|-- BugTicket
+    Ticket <|-- ComplaintTicket
+    Ticket <|-- FeatureRequestTicket
+    Ticket <|-- InquiryTicket
+    TicketFactory ..> Ticket : "creates"
+```
+
+**Why Factory Method and not simple `new` instantiation?**
+If the UI or Facade used `new BugTicket()`, the client code would be tightly coupled to concrete classes. Adding a new ticket type (e.g., `HardwareTicket`) would require modifying the Facade. By using a Factory, the client only passes an enum, ensuring the Open/Closed Principle is respected.
+
+### 5.3 Facade (Structural)
+**Role:** `SupportFacade` provides a simple, high-level API to the UI.
+
+```mermaid
+classDiagram
+    class SupportFacade {
+        +submitTicket()
+        +markAsUrgent()
+    }
+    class TicketFactory
+    class UrgentTicketDecorator
+    class TicketSystem
+    
+    SupportFacade ..> TicketFactory
+    SupportFacade ..> TicketSystem
+    SupportFacade ..> UrgentTicketDecorator
+```
+
+**Why Facade and not direct UI access?**
+Without Facade, the UI would need to manually orchestrate the Factory, Decorator, and Singleton just to submit an urgent ticket. This leaks complex domain logic directly into the GUI. Facade hides this complexity, exposing only domain-relevant operations and keeping the GUI cleanly decoupled.
+
+### 5.4 Adapter (Structural)
+**Role:** `EmailTicketAdapter` converts `EmailMessage` into a `Ticket`.
+
+```mermaid
+classDiagram
+    class TicketSource { <<interface>> }
+    class EmailMessage {
+        -subject: String
+        -body: String
+    }
+    class EmailTicketAdapter {
+        +toTicket() Ticket
+    }
+    class TicketFactory
+    
+    TicketSource <|.. EmailTicketAdapter
+    EmailTicketAdapter --> EmailMessage : "adapts"
+    EmailTicketAdapter ..> TicketFactory : "uses"
+```
+
+**Why Adapter and not modifying the Factory?**
+Modifying `TicketFactory` to accept `EmailMessage` violates the Single Responsibility Principle—the factory should only know about our internal ticket parameters, not external email objects. Adapter bridges the external system without polluting our core domain classes.
+
+### 5.5 Decorator (Structural)
+**Role:** `UrgentTicketDecorator` wraps a `Ticket` to dynamically alter its priority.
+
+```mermaid
+classDiagram
+    class Ticket { <<abstract>> }
+    class TicketDecorator { #wrapped: Ticket }
+    class UrgentTicketDecorator {
+        +getPriority() Priority
+    }
+    
+    Ticket <|-- TicketDecorator
+    TicketDecorator o-- Ticket : "wraps"
+    TicketDecorator <|-- UrgentTicketDecorator
+```
+
+**Why Decorator and not subclassing (e.g., `UrgentBugTicket`)?**
+If we used inheritance, every ticket type would need an "Urgent" subclass (`UrgentBugTicket`, `UrgentInquiryTicket`, etc.), leading to massive class explosion. Decorator allows us to add "Urgency" behavior to *any* ticket instance at runtime dynamically using object composition.
+
+### 5.6 Proxy (Structural)
+**Role:** `TicketSystemProxy` intercepts calls to enforce role-based access control.
+
+```mermaid
+classDiagram
+    class ITicketSystem { <<interface>> +resolveTicket() }
+    class TicketSystem { +resolveTicket() }
+    class TicketSystemProxy { -real: TicketSystem }
+    class UserSession { -role: UserRole }
+    class UserRole { <<enumeration>> }
+    
+    ITicketSystem <|.. TicketSystem
+    ITicketSystem <|.. TicketSystemProxy
+    TicketSystemProxy --> TicketSystem : "delegates"
+    TicketSystemProxy ..> UserSession : "checks role"
+    UserSession --> UserRole
+```
+
+**Why Proxy and not putting security logic inside TicketSystem?**
+Putting access checks directly inside `TicketSystem` violates the Single Responsibility Principle by mixing business state logic with security rule logic. Proxy intercepts the call *before* it reaches the core object, centralizing security enforcement while keeping the domain object pure. It is also safer than relying on UI-level checks.
+
+### 5.7 State (Behavioral)
+**Role:** `TicketContext` and `TicketState` manage the strict lifecycle of a ticket.
+
+```mermaid
+classDiagram
+    class TicketContext { -state: TicketState }
+    class TicketState { <<interface>> +escalate(), +resolve(), +reopen() }
+    class OpenState
+    class InProgressState
+    class EscalatedState
+    class ResolvedState
+    
+    TicketContext *-- TicketState
+    TicketState <|.. OpenState
+    TicketState <|.. InProgressState
+    TicketState <|.. EscalatedState
+    TicketState <|.. ResolvedState
+```
+
+**Why State and not a simple Enum with if-else?**
+A monolithic `switch` statement checking `if (status == OPEN)` across every method becomes an unmaintainable anti-pattern as transition rules get complex. The State pattern encapsulates state-specific rules inside independent classes (e.g. `OpenState` knows exactly what it can transition to). It structurally guarantees illegal transitions are impossible.
+
+### 5.8 Observer (Behavioral)
+**Role:** `TicketSystem` broadcasts `TicketEvent` to registered listeners.
+
+```mermaid
+classDiagram
+    class TicketSystem { +notifyListeners() }
+    class TicketEventListener { <<interface>> +onTicketEvent() }
+    class TicketEvent
+    class TicketEventType { <<enumeration>> }
+    class LogPanelListener
+    class ConsoleNotificationListener
+    class StatisticsListener
+    
+    TicketSystem o-- TicketEventListener : "notifies"
+    TicketEventListener <|.. LogPanelListener
+    TicketEventListener <|.. ConsoleNotificationListener
+    TicketEventListener <|.. StatisticsListener
+    TicketEvent --> TicketEventType
+    TicketEventListener ..> TicketEvent : "receives"
+```
+
+**Why Observer and not GUI polling or direct callbacks?**
+If the GUI polled the system constantly for updates, it would waste CPU cycles. If `TicketSystem` directly invoked GUI components, it would be permanently coupled to a specific UI framework. Observer establishes a publish-subscribe model, allowing the backend to push events immediately while remaining completely unaware of who (GUI, logger, stats bar) is listening.
+
+### 5.9 Chain of Responsibility (Behavioral)
+**Role:** Passes a ticket through hierarchical support tiers (`Level1` -> `Level2` -> `Manager`).
+
+```mermaid
+classDiagram
+    class SupportHandler { <<abstract>> -next: SupportHandler }
+    class Level1Handler
+    class Level2Handler
+    class ManagerHandler
+    
+    SupportHandler o-- SupportHandler : "next"
+    SupportHandler <|-- Level1Handler
+    SupportHandler <|-- Level2Handler
+    SupportHandler <|-- ManagerHandler
+```
+
+**Why Chain of Responsibility and not a massive if-else escalation method?**
+Hardcoding `if (ticket is Bug) route to L2; else if (ticket is Inquiry) route to L1;` creates rigid, unmaintainable monolithic code. Chain allows us to link independent handlers sequentially. If we ever need to add a new tier (e.g., `Level3Handler`), we just insert a new link into the chain without modifying existing handlers.
+
+---
+
+## 6. Class & Role Matrix
+
+| Class Name | Primary Role in the System | Design Pattern |
+| :--- | :--- | :--- |
+| `TicketSystem` | Global registry containing all tickets and orchestrating event notifications. | **Singleton**, **Observer (Subject)** |
+| `ITicketSystem` | Shared interface allowing the GUI to remain unaware of security proxies. | **Proxy (Subject)** |
+| `TicketSystemProxy` | Intercepts system calls to enforce role-based access before delegating to the real system. | **Proxy** |
+| `SupportFacade` | Provides a simple API for the GUI to submit tickets, hiding factory and decorator logic. | **Facade** |
+| `TicketFactory` | Centralizes the instantiation logic for creating different specific ticket subclasses. | **Factory Method** |
+| `Ticket` | Base abstract domain object representing a customer support issue. | *(Target / Base)* |
+| `EmailMessage` | A raw data structure representing an inbound email, incompatible with the Ticket system. | *(Adaptee)* |
+| `EmailTicketAdapter` | Scans email subjects and converts the `EmailMessage` into a properly formatted `Ticket`. | **Adapter** |
+| `TicketDecorator` | Abstract base for wrapping tickets without inheritance explosion. | **Decorator** |
+| `UrgentTicketDecorator`| Dynamically elevates a ticket's priority and alters its visual label at runtime. | **Decorator** |
+| `TicketContext` | Wraps a ticket to manage its lifecycle, delegating actions to its active state object. | **State (Context)** |
+| `TicketState` | Interface defining operations (escalate, resolve) that vary depending on the ticket's state. | **State** |
+| `TicketEventListener` | Interface implemented by any class wishing to listen to system-wide ticket updates. | **Observer** |
+| `TicketEvent` | Immutable payload containing the affected ticket and what happened to it. | **Observer (Payload)** |
+| `AppState` | Reactive state holder for the Compose UI that derives live stats from events. | **Observer (Concrete)** |
+| `SupportHandler` | Abstract base that allows linking escalation tiers together sequentially. | **Chain of Responsibility** |
+| `Level1Handler` | Attempts to handle generic inquiries; passes anything else to Level 2. | **Chain of Responsibility** |
+| `ManagerHandler` | The end of the chain. Resolves all escalated complaints and unresolved issues. | **Chain of Responsibility** |
+
+---
+
+## 7. Pattern Selection Rationale & Alternatives Comparison
+
+During the architectural design phase, several alternative patterns were evaluated. Below is a comparative analysis explaining why the 9 chosen patterns were selected over other common Gang of Four (GoF) alternatives for specific parts of the system.
+
+### 7.1 Creational Subsystem: Factory Method vs. Abstract Factory / Builder
+*   **Chosen:** **Factory Method** (`TicketFactory`)
+*   **Rejected:** Abstract Factory
+    *   *Why:* Abstract Factory is designed for creating **families** of related or dependent objects (e.g., WindowsButton + WindowsCheckbox vs. MacButton + MacCheckbox). In AutoSupport, we only need to create standalone `Ticket` variants. Abstract Factory would have introduced unnecessary complexity (multiple factory interfaces) for a simple polymorphic creation task.
+*   **Rejected:** Builder
+    *   *Why:* Builder is ideal for constructing complex objects step-by-step, especially when an object requires numerous optional parameters. Our tickets have straightforward initialization parameters (Type, Title, Description). A factory with internal setters for default values is perfectly sufficient; adding `TicketBuilder` and `Director` classes would be severe over-engineering.
+
+### 7.2 Structural Subsystem: Decorator vs. Subclassing / Strategy
+*   **Chosen:** **Decorator** (`UrgentTicketDecorator`)
+*   **Rejected:** Subclassing (Inheritance)
+    *   *Why:* If we relied purely on inheritance to represent urgency, we would suffer from **class explosion**. We would need `UrgentBugTicket`, `UrgentInquiryTicket`, `UrgentComplaintTicket`, etc. Decorator prevents this by using composition, allowing us to dynamically attach "urgency" to any base ticket instance at runtime.
+*   **Rejected:** Strategy
+    *   *Why:* While both use composition, Strategy is meant for swapping **algorithms** (how a task is executed). We needed to augment the ticket's **structural metadata** (its priority and UI label). Decorator wraps the object to add this behavior, whereas Strategy would have required the ticket to hold a `PriorityStrategy` field, which misaligns with the intent of transparently wrapping the ticket.
+
+### 7.3 Structural Subsystem: Facade vs. Mediator
+*   **Chosen:** **Facade** (`SupportFacade`)
+*   **Rejected:** Mediator
+    *   *Why:* Mediator is designed to facilitate complex, multidirectional communication between tightly coupled peer objects (colleagues). In our system, the communication is strictly unidirectional: The UI tier commands the domain tier. The UI doesn't need to coordinate with peers; it just needs a simplified entry point to a complex subsystem. Facade provides exactly this one-way, high-level interface.
+
+### 7.4 Security Subsystem: Proxy vs. Decorator
+*   **Chosen:** **Proxy** (`TicketSystemProxy`)
+*   **Rejected:** Decorator
+    *   *Why:* Structurally, Proxy and Decorator look almost identical (both wrap an object and implement its interface). However, their **intent** differs completely. Decorator adds features or modifies behavior dynamically. Proxy controls **access** to the underlying object. Because we are enforcing strict role-based security validation (checking `UserSession.role`), Proxy is the semantically correct pattern to intercept unauthorized calls before they reach the real Singleton.
+
+### 7.5 Lifecycle Subsystem: State vs. Status Enum
+*   **Chosen:** **State** (`TicketContext` & `TicketState`)
+*   **Rejected:** Status Enum with massive `switch` / `if-else` blocks
+    *   *Why:* If we used an enum (`status == OPEN`), every method (`escalate()`, `resolve()`, `reopen()`) would require massive `switch` statements to check if the transition is legal. This scatters state logic across the whole application, making bugs highly likely. The State pattern isolates the transition rules into dedicated classes (e.g., only `ResolvedState` implements `reopen()`), mathematically proving that illegal transitions cannot occur.
+
+### 7.6 Escalation Subsystem: Chain of Responsibility vs. Decorator / Command
+*   **Chosen:** **Chain of Responsibility** (`SupportHandler` pipeline)
+*   **Rejected:** Decorator
+    *   *Why:* In a Decorator stack, a request usually passes through **all** wrappers. In our escalation system, we want the request to be handled by exactly **one** appropriate tier. Chain of Responsibility passes the ticket along until a handler says, "I have the authority to resolve this," and then the chain stops.
+*   **Rejected:** Command
+    *   *Why:* Command encapsulates a request as an object, primarily for queueing, logging, or undo/redo operations. Our requirement is an escalation pipeline based on authority levels, not command queueing or rollback.
+
+### 7.7 Event Subsystem: Observer vs. Polling / Mediator
+*   **Chosen:** **Observer** (`TicketEventListener` & `TicketSystem`)
+*   **Rejected:** GUI Polling
+    *   *Why:* Having the UI continuously ask the `TicketSystem` "Has anything changed?" wastes CPU cycles and creates synchronization lag. Observer pushes data instantly the millisecond a state changes.
+*   **Rejected:** Direct Callback / Tight Coupling
+    *   *Why:* If `TicketSystem` directly called `MainGUI.updateLogs()`, the backend domain would become permanently coupled to a specific frontend framework. Observer allows the domain to broadcast events to a generic interface, remaining blissfully ignorant of whether the listener is a Compose UI, a Swing UI, or a text file logger.

@@ -1,0 +1,12 @@
+classDiagram
+    class EmailMessage {
+        -subject: String
+        -body: String
+    }
+    class EmailTicketAdapter {
+        +toTicket() Ticket
+    }
+    class TicketFactory
+    
+    EmailTicketAdapter --> EmailMessage : "adapts"
+    EmailTicketAdapter ..> TicketFactory : "uses"

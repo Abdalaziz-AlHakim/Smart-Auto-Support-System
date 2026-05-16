@@ -5,7 +5,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import behavioral.observer.*
 import creational.singleton.TicketSystem
-import ui.AutoSupportApp
+import ui.App
 import ui.AppState
 
 /**
@@ -31,6 +31,6 @@ fun main() = application {
         title          = "AutoSupport — Design Pattern Demo",
         state          = WindowState(size = DpSize(1200.dp, 760.dp))
     ) {
-        AutoSupportApp(appState)
+        App(appState)
     }
 }

@@ -1,0 +1,12 @@
+classDiagram
+    class SupportFacade {
+        +submitTicket()
+        +markAsUrgent()
+    }
+    class TicketFactory
+    class UrgentTicketDecorator
+    class TicketSystem
+    
+    SupportFacade ..> TicketFactory
+    SupportFacade ..> TicketSystem
+    SupportFacade ..> UrgentTicketDecorator

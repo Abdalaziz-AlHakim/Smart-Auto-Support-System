@@ -325,15 +325,19 @@ public class MainGUI extends JFrame {
         if (selected == null) return;
 
         try {
-            behavioral.state.TicketContext ctx =
-                new behavioral.state.TicketContext(selected);
-            // Force the context into the correct state before calling reopen
-            // (TicketContext always starts in OpenState, so we replicate the current state)
-            selected.setStatus(creational.factory.TicketStatus.OPEN);
+            // Use the Proxy to reopen — this enforces role checks and
+            // delegates to the State pattern via TicketSystem.
+            proxy.reopenTicket(selected);
             refreshTable();
+        } catch (SecurityException ex) {
+            JOptionPane.showMessageDialog(this, "Access denied: " + ex.getMessage(),
+                "Security", JOptionPane.ERROR_MESSAGE);
+        } catch (IllegalStateException ex) {
+            JOptionPane.showMessageDialog(this, "State error: " + ex.getMessage(),
+                "Invalid Operation", JOptionPane.WARNING_MESSAGE);
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this, ex.getMessage(),
-                "Invalid Operation", JOptionPane.WARNING_MESSAGE);
+                "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 

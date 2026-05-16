@@ -11,5 +11,6 @@ public enum TicketEventType {
     CREATED,    // A new ticket was registered in the system
     ESCALATED,  // A ticket moved beyond its current handler level
     RESOLVED,   // A ticket was fully resolved and closed
-    REOPENED    // A previously RESOLVED ticket was reopened (back to OPEN)
+    REOPENED,    // A previously RESOLVED ticket was reopened (back to OPEN)
+    PICKED_UP   // An agent moved an OPEN ticket to IN_PROGRESS
 }

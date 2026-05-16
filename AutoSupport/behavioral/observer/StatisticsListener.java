@@ -27,44 +27,38 @@ public class StatisticsListener implements TicketEventListener {
         this.statsLabel = statsLabel;
     }
 
-    /**
-     * Update the appropriate counter and refresh the GUI label.
-     * Counter semantics:
-     *   CREATED   → open +1
-     *   ESCALATED → open -1, escalated +1
-     *   RESOLVED  → escalated -1 (if was escalated) or open -1, resolved +1
-     */
     @Override
     public void onTicketEvent(TicketEvent event) {
-        switch (event.getType()) {
-
-            case CREATED:
-                openCount++;          // New ticket enters the open queue
-                break;
-
-            case ESCALATED:
-                openCount--;          // Ticket leaves the open queue
-                escalatedCount++;     // …and enters the escalated queue
-                break;
-
-            case RESOLVED:
-                // Ticket could be coming from either open or escalated state
-                if (escalatedCount > 0) {
-                    escalatedCount--;
-                } else {
-                    openCount = Math.max(0, openCount - 1);
-                }
-                resolvedCount++;      // Always increment resolved
-                break;
-
-            case REOPENED:
-                // Ticket moves from resolved back to open
-                resolvedCount = Math.max(0, resolvedCount - 1);
-                openCount++;
-                break;
-        }
-
+        // Derive counts from the actual ticket list — immune to counter drift
+        // or logic errors in manual increment/decrement.
+        recomputeStats();
         refreshLabel(); // Re-render the status bar text
+    }
+
+    /** Re-derive all totals by scanning the global ticket registry. */
+    private void recomputeStats() {
+        openCount = 0;
+        escalatedCount = 0;
+        resolvedCount = 0;
+
+        for (creational.factory.Ticket t : creational.singleton.TicketSystem.getInstance().getAllTickets()) {
+            switch (t.getStatus()) {
+                case OPEN:
+                case IN_PROGRESS:
+                    openCount++;
+                    break;
+                case ESCALATED:
+                    escalatedCount++;
+                    break;
+                case RESOLVED:
+                    resolvedCount++;
+                    break;
+            }
+            
+            if (t.getPriority() == creational.factory.Priority.URGENT && t.getStatus() != creational.factory.TicketStatus.ESCALATED) {
+                escalatedCount++;
+            }
+        }
     }
 
     /** Update the JLabel text with the current counter values. */

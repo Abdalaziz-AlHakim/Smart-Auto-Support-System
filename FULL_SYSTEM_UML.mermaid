@@ -1,0 +1,100 @@
+classDiagram
+    %% ── CORE ──────────────────────────────────────────────────────────────
+    class ITicketSystem { <<interface>> }
+    class TicketSystem {
+        -static instance
+        -List~Ticket~ tickets
+        -List~TicketEventListener~ listeners
+        +getInstance()
+        +addTicket()
+        +subscribe()
+        +notifyListeners()
+    }
+    class UserSession { -static instance; -UserRole role }
+    class UserRole { <<enumeration>> }
+    class TicketSystemProxy { -TicketSystem real }
+
+    ITicketSystem <|.. TicketSystem
+    ITicketSystem <|.. TicketSystemProxy
+    TicketSystemProxy --> TicketSystem
+    TicketSystemProxy --> UserSession
+    UserSession --> UserRole
+
+    %% ── FACTORY ──────────────────────────────────────────────────────────
+    class Ticket { <<abstract>> }
+    class BugTicket
+    class ComplaintTicket
+    class FeatureRequestTicket
+    class InquiryTicket
+    class TicketFactory
+
+    Ticket <|-- BugTicket
+    Ticket <|-- ComplaintTicket
+    Ticket <|-- FeatureRequestTicket
+    Ticket <|-- InquiryTicket
+    TicketFactory ..> Ticket : creates
+
+    %% ── DECORATOR ────────────────────────────────────────────────────────
+    class TicketDecorator { #Ticket wrapped }
+    class UrgentTicketDecorator
+    Ticket <|-- TicketDecorator
+    TicketDecorator <|-- UrgentTicketDecorator
+    TicketDecorator --> Ticket
+
+    %% ── ADAPTER ──────────────────────────────────────────────────────────
+    class TicketSource { <<interface>> }
+    class EmailMessage
+    class EmailTicketAdapter
+    TicketSource <|.. EmailTicketAdapter
+    EmailTicketAdapter --> EmailMessage
+    EmailTicketAdapter ..> TicketFactory
+
+    %% ── FACADE ───────────────────────────────────────────────────────────
+    class SupportFacade {
+        +submitTicket()
+        +submitFromEmail()
+        +escalateTicket()
+    }
+    SupportFacade --> TicketFactory
+    SupportFacade --> UrgentTicketDecorator
+    SupportFacade --> TicketSystem
+    SupportFacade --> EmailTicketAdapter
+    SupportFacade --> TicketSystemProxy
+
+    %% ── OBSERVER ─────────────────────────────────────────────────────────
+    class TicketEventListener { <<interface>> }
+    class TicketEvent
+    class TicketEventType { <<enumeration>> }
+    class LogPanelListener
+    class ConsoleNotificationListener
+    class StatisticsListener
+    TicketEventListener <|.. LogPanelListener
+    TicketEventListener <|.. ConsoleNotificationListener
+    TicketEventListener <|.. StatisticsListener
+    TicketSystem --> TicketEventListener : notifies
+    TicketEvent --> TicketEventType
+
+    %% ── STATE ────────────────────────────────────────────────────────────
+    class TicketState { <<interface>> }
+    class OpenState
+    class InProgressState
+    class EscalatedState
+    class ResolvedState
+    class TicketContext { -TicketState currentState }
+    TicketState <|.. OpenState
+    TicketState <|.. InProgressState
+    TicketState <|.. EscalatedState
+    TicketState <|.. ResolvedState
+    TicketContext --> TicketState
+    TicketContext --> Ticket
+    SupportFacade --> TicketContext
+
+    %% ── CHAIN ────────────────────────────────────────────────────────────
+    class SupportHandler { <<abstract>> #SupportHandler next }
+    class Level1Handler
+    class Level2Handler
+    class ManagerHandler
+    SupportHandler <|-- Level1Handler
+    SupportHandler <|-- Level2Handler
+    SupportHandler <|-- ManagerHandler
+    SupportHandler --> SupportHandler

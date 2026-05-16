@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AutoSupport UML Visualizations</title>
+<style>
+  :root { color-scheme: light; font-family: Inter, Segoe UI, Arial, sans-serif; background:#f7f8fb; color:#1d2433; }
+  body { margin:0; }
+  header { position:sticky; top:0; z-index:2; padding:18px 28px; background:#ffffffee; border-bottom:1px solid #d9deea; backdrop-filter: blur(8px); }
+  h1 { margin:0 0 4px; font-size:22px; font-weight:700; }
+  p { margin:0; color:#5a6475; font-size:14px; }
+  main { padding:24px; display:grid; gap:22px; }
+  section { background:#fff; border:1px solid #dfe4ef; border-radius:8px; padding:18px; overflow:auto; box-shadow:0 1px 2px #16213a14; }
+  h2 { margin:0 0 14px; font-size:18px; }
+  .mermaid { min-width:720px; }
+  nav { margin-top:12px; display:flex; flex-wrap:wrap; gap:8px; }
+  nav a { color:#2357a4; text-decoration:none; border:1px solid #c8d4e8; border-radius:999px; padding:5px 10px; font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AutoSupport UML Visualizations</h1>
+  <p>Generated from project_report.md.resolved. Open this file in a browser with internet access so Mermaid can render the diagrams.</p>
+  <nav><a href="#d1">Full System UML Diagram &amp; Pattern Relationships</a><a href="#d2">Singleton (Creational)</a><a href="#d3">Factory Method (Creational)</a><a href="#d4">Facade (Structural)</a><a href="#d5">Adapter (Structural)</a><a href="#d6">Decorator (Structural)</a><a href="#d7">Proxy (Structural)</a><a href="#d8">State (Behavioral)</a><a href="#d9">Observer (Behavioral)</a><a href="#d10">Chain of Responsibility (Behavioral)</a></nav>
+</header>
+<main>
+  <section id="d1">
+    <h2>1. Full System UML Diagram &amp; Pattern Relationships</h2>
+    <pre class="mermaid">
+classDiagram
+    %% SINGLETON &amp; PROXY
+    class ITicketSystem {
+        &lt;&lt;interface&gt;&gt;
+        +addTicket(Ticket)
+        +getAllTickets() List~Ticket~
+        +resolveTicket(Ticket)
+        +startProgress(Ticket)
+        +reopenTicket(Ticket)
+    }
+    class TicketSystem {
+        &lt;&lt;Singleton&gt;&gt;
+        -static instance: TicketSystem
+        -tickets: List~Ticket~
+        -listeners: List~TicketEventListener~
+        +getInstance() TicketSystem
+        +subscribe(TicketEventListener)
+        +notifyListeners(TicketEvent)
+    }
+    class TicketSystemProxy {
+        -realSystem: TicketSystem
+    }
+    
+    ITicketSystem &lt;|.. TicketSystem
+    ITicketSystem &lt;|.. TicketSystemProxy
+    TicketSystemProxy --&gt; TicketSystem : "delegates to"
+    TicketSystemProxy ..&gt; UserSession : "checks role"
+
+    %% FACTORY
+    class TicketFactory {
+        +createTicket(TicketType, title, desc) Ticket
+    }
+    class Ticket {
+        &lt;&lt;abstract&gt;&gt;
+        -id: int
+        -title: String
+        -status: TicketStatus
+        +getType() TicketType
+        +getPriority() Priority
+    }
+    class BugTicket
+    class ComplaintTicket
+    class InquiryTicket
+    
+    Ticket &lt;|-- BugTicket
+    Ticket &lt;|-- ComplaintTicket
+    Ticket &lt;|-- InquiryTicket
+    TicketFactory ..&gt; Ticket : "creates"
+
+    %% DECORATOR
+    class TicketDecorator {
+        &lt;&lt;abstract&gt;&gt;
+        #wrapped: Ticket
+    }
+    class UrgentTicketDecorator {
+        +getPriority() Priority
+        +getTypeLabel() String
+    }
+    
+    Ticket &lt;|-- TicketDecorator
+    TicketDecorator o-- Ticket : "wraps"
+    TicketDecorator &lt;|-- UrgentTicketDecorator
+
+    %% ADAPTER
+    class EmailMessage {
+        -sender: String
+        -subject: String
+        -body: String
+    }
+    class EmailTicketAdapter {
+        -email: EmailMessage
+        +toTicket() Ticket
+    }
+    EmailTicketAdapter --&gt; EmailMessage : "adapts"
+    EmailTicketAdapter ..&gt; TicketFactory : "uses"
+
+    %% FACADE
+    class SupportFacade {
+        +submitTicket(...) Ticket
+        +submitFromEmail(...) Ticket
+        +markAsUrgent(Ticket)
+        +escalateTicket(Ticket, log)
+    }
+    SupportFacade ..&gt; TicketFactory
+    SupportFacade ..&gt; TicketSystem
+    SupportFacade ..&gt; EmailTicketAdapter
+    SupportFacade ..&gt; UrgentTicketDecorator
+    SupportFacade ..&gt; TicketContext
+
+    %% STATE
+    class TicketContext {
+        -currentState: TicketState
+        +escalate()
+        +resolve()
+        +reopen()
+    }
+    class TicketState {
+        &lt;&lt;interface&gt;&gt;
+        +escalate(TicketContext)
+        +resolve(TicketContext)
+        +reopen(TicketContext)
+    }
+    class OpenState
+    class InProgressState
+    class EscalatedState
+    class ResolvedState
+
+    TicketContext *-- TicketState : "has state"
+    TicketContext --&gt; Ticket : "mutates"
+    TicketState &lt;|.. OpenState
+    TicketState &lt;|.. InProgressState
+    TicketState &lt;|.. EscalatedState
+    TicketState &lt;|.. ResolvedState
+
+    %% OBSERVER
+    class TicketEventListener {
+        &lt;&lt;interface&gt;&gt;
+        +onTicketEvent(TicketEvent)
+    }
+    class TicketEvent {
+        -ticket: Ticket
+        -type: TicketEventType
+    }
+    class AppState {
+        +onTicketEvent(TicketEvent)
+    }
+    class StatisticsListener {
+        +onTicketEvent(TicketEvent)
+    }
+    
+    TicketSystem o-- TicketEventListener : "notifies"
+    TicketEventListener &lt;|.. AppState
+    TicketEventListener &lt;|.. StatisticsListener
+    TicketEventListener ..&gt; TicketEvent : "receives"
+
+    %% CHAIN OF RESPONSIBILITY
+    class SupportHandler {
+        &lt;&lt;abstract&gt;&gt;
+        -next: SupportHandler
+        +setNext(SupportHandler) SupportHandler
+        +handle(Ticket, log)
+    }
+    class Level1Handler
+    class Level2Handler
+    class ManagerHandler
+
+    SupportHandler o-- SupportHandler : "next"
+    SupportHandler &lt;|-- Level1Handler
+    SupportHandler &lt;|-- Level2Handler
+    SupportHandler &lt;|-- ManagerHandler
+    </pre>
+  </section>
+  <section id="d2">
+    <h2>2. Singleton (Creational)</h2>
+    <pre class="mermaid">
+classDiagram
+    class TicketSystem {
+        &lt;&lt;Singleton&gt;&gt;
+        -static instance: TicketSystem
+        -tickets: List~Ticket~
+        +getInstance() TicketSystem
+        +addTicket(Ticket)
+    }
+    </pre>
+  </section>
+  <section id="d3">
+    <h2>3. Factory Method (Creational)</h2>
+    <pre class="mermaid">
+classDiagram
+    class TicketFactory {
+        +createTicket(type, title, desc) Ticket
+    }
+    class Ticket { &lt;&lt;abstract&gt;&gt; }
+    class BugTicket
+    class ComplaintTicket
+    class InquiryTicket
+    
+    Ticket &lt;|-- BugTicket
+    Ticket &lt;|-- ComplaintTicket
+    Ticket &lt;|-- InquiryTicket
+    TicketFactory ..&gt; Ticket : "creates"
+    </pre>
+  </section>
+  <section id="d4">
+    <h2>4. Facade (Structural)</h2>
+    <pre class="mermaid">
+classDiagram
+    class SupportFacade {
+        +submitTicket()
+        +markAsUrgent()
+    }
+    class TicketFactory
+    class UrgentTicketDecorator
+    class TicketSystem
+    
+    SupportFacade ..&gt; TicketFactory
+    SupportFacade ..&gt; TicketSystem
+    SupportFacade ..&gt; UrgentTicketDecorator
+    </pre>
+  </section>
+  <section id="d5">
+    <h2>5. Adapter (Structural)</h2>
+    <pre class="mermaid">
+classDiagram
+    class EmailMessage {
+        -subject: String
+        -body: String
+    }
+    class EmailTicketAdapter {
+        +toTicket() Ticket
+    }
+    class TicketFactory
+    
+    EmailTicketAdapter --&gt; EmailMessage : "adapts"
+    EmailTicketAdapter ..&gt; TicketFactory : "uses"
+    </pre>
+  </section>
+  <section id="d6">
+    <h2>6. Decorator (Structural)</h2>
+    <pre class="mermaid">
+classDiagram
+    class Ticket { &lt;&lt;abstract&gt;&gt; }
+    class TicketDecorator { #wrapped: Ticket }
+    class UrgentTicketDecorator {
+        +getPriority() Priority
+    }
+    
+    Ticket &lt;|-- TicketDecorator
+    TicketDecorator o-- Ticket : "wraps"
+    TicketDecorator &lt;|-- UrgentTicketDecorator
+    </pre>
+  </section>
+  <section id="d7">
+    <h2>7. Proxy (Structural)</h2>
+    <pre class="mermaid">
+classDiagram
+    class ITicketSystem { &lt;&lt;interface&gt;&gt; +resolveTicket() }
+    class TicketSystem { +resolveTicket() }
+    class TicketSystemProxy { -real: TicketSystem }
+    class UserSession { -role: UserRole }
+    
+    ITicketSystem &lt;|.. TicketSystem
+    ITicketSystem &lt;|.. TicketSystemProxy
+    TicketSystemProxy --&gt; TicketSystem : "delegates"
+    TicketSystemProxy ..&gt; UserSession : "checks role"
+    </pre>
+  </section>
+  <section id="d8">
+    <h2>8. State (Behavioral)</h2>
+    <pre class="mermaid">
+classDiagram
+    class TicketContext { -state: TicketState }
+    class TicketState { &lt;&lt;interface&gt;&gt; +escalate(), +resolve() }
+    class OpenState
+    class InProgressState
+    
+    TicketContext *-- TicketState
+    TicketState &lt;|.. OpenState
+    TicketState &lt;|.. InProgressState
+    </pre>
+  </section>
+  <section id="d9">
+    <h2>9. Observer (Behavioral)</h2>
+    <pre class="mermaid">
+classDiagram
+    class TicketSystem { +notifyListeners() }
+    class TicketEventListener { &lt;&lt;interface&gt;&gt; +onTicketEvent() }
+    class AppState
+    class StatisticsListener
+    
+    TicketSystem o-- TicketEventListener : "notifies"
+    TicketEventListener &lt;|.. AppState
+    TicketEventListener &lt;|.. StatisticsListener
+    </pre>
+  </section>
+  <section id="d10">
+    <h2>10. Chain of Responsibility (Behavioral)</h2>
+    <pre class="mermaid">
+classDiagram
+    class SupportHandler { &lt;&lt;abstract&gt;&gt; -next: SupportHandler }
+    class Level1Handler
+    class Level2Handler
+    class ManagerHandler
+    
+    SupportHandler o-- SupportHandler : "next"
+    SupportHandler &lt;|-- Level1Handler
+    SupportHandler &lt;|-- Level2Handler
+    SupportHandler &lt;|-- ManagerHandler
+    </pre>
+  </section>
+</main>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'default' });
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+classDiagram
+    class TicketSystem {
+        <<Singleton>>
+        -static instance: TicketSystem
+        -tickets: List~Ticket~
+        +getInstance() TicketSystem
+        +addTicket(Ticket)
+    }

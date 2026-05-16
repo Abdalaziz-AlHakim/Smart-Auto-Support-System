@@ -5,6 +5,8 @@ import behavioral.observer.TicketEvent
 import behavioral.observer.TicketEventType
 import creational.factory.Ticket
 import creational.factory.TicketStatus
+import creational.factory.TicketType
+import creational.factory.Priority
 import creational.singleton.TicketSystem
 import structural.facade.SupportFacade
 import structural.proxy.ITicketSystem
@@ -34,6 +36,28 @@ class AppState {
     /** Live ticket list — rebuilt from Singleton after every event. */
     var tickets by mutableStateOf(listOf<Ticket>())
         private set
+
+    /** Search query for filtering the ticket list. */
+    var searchQuery by mutableStateOf("")
+
+    /** Filtered ticket list based on searchQuery (ID or Title). */
+    val filteredTickets: List<Ticket>
+        get() {
+            val base = if (searchQuery.isEmpty()) tickets 
+                       else tickets.filter { 
+                           it.id.toString().contains(searchQuery) || 
+                           it.title.contains(searchQuery, ignoreCase = true) 
+                       }
+            return base.filter { ticket ->
+                val type = ticket.type
+                val isUrgent = ticket.priority == Priority.URGENT
+                when (currentRole) {
+                    UserRole.MANAGER -> isUrgent || type == TicketType.COMPLAINT
+                    UserRole.AGENT_L2 -> !isUrgent && (type == TicketType.BUG || type == TicketType.FEATURE_REQUEST)
+                    UserRole.AGENT_L1 -> !isUrgent && type == TicketType.INQUIRY
+                }
+            }
+        }
 
     /** Currently selected ticket in the table. */
     var selectedTicket by mutableStateOf<Ticket?>(null)
@@ -67,6 +91,7 @@ class AppState {
             TicketEventType.ESCALATED -> "⬆" to "ESCALATED"
             TicketEventType.RESOLVED  -> "✔" to "RESOLVED"
             TicketEventType.REOPENED  -> "♻" to "REOPENED"
+            TicketEventType.PICKED_UP -> "🧤" to "PICKED UP"
         }
         val time = java.time.LocalTime.now().format(
             java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"))
@@ -82,6 +107,13 @@ class AppState {
                 println("📧 [EMAIL] Ticket #${event.ticket.id} resolved.")
             TicketEventType.REOPENED  ->
                 println("📧 [EMAIL] Ticket #${event.ticket.id} reopened.")
+            TicketEventType.PICKED_UP ->
+                println("🧤 [HAND]  Ticket #${event.ticket.id} picked up by agent.")
+        }
+
+        // If the selected ticket was the one updated, refresh it to show new status
+        if (selectedTicket?.id == event.ticket.id) {
+            selectedTicket = event.ticket
         }
     }
 
@@ -97,6 +129,12 @@ class AppState {
                 TicketStatus.IN_PROGRESS -> open++
                 TicketStatus.ESCALATED   -> escalated++
                 TicketStatus.RESOLVED    -> resolved++
+            }
+            
+            // Urgent tickets also count towards the Escalated total, 
+            // even if their status is still OPEN or IN_PROGRESS.
+            if (t.priority == Priority.URGENT && t.status != TicketStatus.ESCALATED) {
+                escalated++
             }
         }
         openCount      = open

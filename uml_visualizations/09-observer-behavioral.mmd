@@ -1,0 +1,9 @@
+classDiagram
+    class TicketSystem { +notifyListeners() }
+    class TicketEventListener { <<interface>> +onTicketEvent() }
+    class AppState
+    class StatisticsListener
+    
+    TicketSystem o-- TicketEventListener : "notifies"
+    TicketEventListener <|.. AppState
+    TicketEventListener <|.. StatisticsListener

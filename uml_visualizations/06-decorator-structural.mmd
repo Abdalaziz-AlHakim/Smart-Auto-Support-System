@@ -1,0 +1,10 @@
+classDiagram
+    class Ticket { <<abstract>> }
+    class TicketDecorator { #wrapped: Ticket }
+    class UrgentTicketDecorator {
+        +getPriority() Priority
+    }
+    
+    Ticket <|-- TicketDecorator
+    TicketDecorator o-- Ticket : "wraps"
+    TicketDecorator <|-- UrgentTicketDecorator

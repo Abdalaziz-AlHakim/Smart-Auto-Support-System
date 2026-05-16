@@ -1,0 +1,13 @@
+classDiagram
+    class TicketFactory {
+        +createTicket(type, title, desc) Ticket
+    }
+    class Ticket { <<abstract>> }
+    class BugTicket
+    class ComplaintTicket
+    class InquiryTicket
+    
+    Ticket <|-- BugTicket
+    Ticket <|-- ComplaintTicket
+    Ticket <|-- InquiryTicket
+    TicketFactory ..> Ticket : "creates"

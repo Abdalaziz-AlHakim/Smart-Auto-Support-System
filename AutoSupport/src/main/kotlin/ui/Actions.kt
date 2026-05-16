@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
@@ -19,9 +21,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import behavioral.strategy.*
 import creational.factory.*
 import structural.adapter.EmailMessage
+import structural.proxy.UserRole
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ACTION PANEL (right sidebar)
@@ -42,7 +44,7 @@ fun ActionPanel(state: AppState, modifier: Modifier) {
     var showEmailDialog  by remember { mutableStateOf(false) }
 
     Column(
-        modifier              = modifier.background(Surface1).padding(16.dp),
+        modifier              = modifier.background(Surface1).verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement   = Arrangement.spacedBy(10.dp)
     ) {
         Text("Actions", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
@@ -74,68 +76,19 @@ fun ActionPanel(state: AppState, modifier: Modifier) {
 
         HorizontalDivider(color = Surface2)
 
-        // ── Section 2: Escalate ───────────────────────────────────────────────
-        SectionLabel(
-            title = "Escalate Selected",
-            guide = "Process the selected ticket through the handler chain using the chosen routing strategy."
-        )
-
-        var selectedStrategy by remember { mutableStateOf("Standard") }
-
-        Tooltip(
-            "Standard: L1 → L2 → Manager (normal flow)\n" +
-            "Urgent: L2 → Manager (skips L1 for faster resolution)\n" +
-            "Type-Based: routes by ticket category\n\n" +
-            "Uses: Strategy pattern to build the chain; Chain of Responsibility to resolve."
-        ) {
-            StrategyDropdown(selectedStrategy) { selectedStrategy = it }
-        }
-
-        Tooltip(
-            "Escalate the selected ticket using the routing strategy above.\n" +
-            "Status is set to ESCALATED, then the chain attempts to resolve it.\n" +
-            "Requires a ticket to be selected in the list."
-        ) {
-            ActionButton("Escalate", Icons.Filled.ArrowUpward, YellowWarn) {
-                val ticket = state.selectedTicket
-                if (ticket == null) { state.errorMessage = "Select a ticket first."; return@ActionButton }
-                if (ticket.status == TicketStatus.RESOLVED) {
-                    state.errorMessage = "Cannot escalate a RESOLVED ticket. Reopen it first."; return@ActionButton
-                }
-                if (ticket.status == TicketStatus.ESCALATED) {
-                    state.errorMessage = "Ticket is already ESCALATED."; return@ActionButton
-                }
-
-                val strategy: RoutingStrategy = when (selectedStrategy) {
-                    "Urgent"     -> UrgentRoutingStrategy()
-                    "Type-Based" -> TypeBasedRoutingStrategy()
-                    else         -> StandardRoutingStrategy()
-                }
-                val chainLog = mutableListOf<String>()
-                try {
-                    state.facade.escalateTicket(ticket, strategy, chainLog)
-                    state.refreshTickets()
-                    // Append chain decisions to the observable log panel
-                    state.logLines.addAll(chainLog)
-                } catch (e: Exception) {
-                    state.errorMessage = e.message ?: "Escalation failed."
-                }
-            }
-        }
-
-        HorizontalDivider(color = Surface2)
+        // ── Section 2: Processing (Removed per requirements) ───────────────────
 
         // ── Section 3: Lifecycle ──────────────────────────────────────────────
         SectionLabel(
-            title = "Ticket Lifecycle",
+            title = "Manual Resolution",
             guide = "Manually change the status of the selected ticket. Role restrictions apply."
         )
 
         Tooltip(
             "Mark the selected ticket as RESOLVED.\n" +
-            "Access is controlled by the Proxy pattern:\n" +
-            "  • AGENT_L1 / L2 cannot resolve ESCALATED tickets.\n" +
-            "  • MANAGER / ADMIN can resolve any ticket."
+            "  • AGENT_L1 can only handle INQUIRY.\n" +
+            "  • AGENT_L2 can handle BUG / FEATURE.\n" +
+            "  • MANAGER handles COMPLAINT and all ESCALATED tickets."
         ) {
             ActionButton("Resolve", Icons.Filled.CheckCircle, GreenOk) {
                 val ticket = state.selectedTicket
@@ -145,6 +98,8 @@ fun ActionPanel(state: AppState, modifier: Modifier) {
                     state.refreshTickets()
                 } catch (e: SecurityException) {
                     state.errorMessage = "Access denied: ${e.message}"
+                } catch (e: IllegalStateException) {
+                    state.errorMessage = "State violation: ${e.message}"
                 }
             }
         }
@@ -161,10 +116,37 @@ fun ActionPanel(state: AppState, modifier: Modifier) {
                     state.errorMessage = "Only RESOLVED tickets can be reopened."; return@ActionButton
                 }
                 try {
-                    state.facade.reopenTicket(ticket)
+                    state.proxy.reopenTicket(ticket)
                     state.refreshTickets()
+                } catch (e: SecurityException) {
+                    state.errorMessage = "Access denied: ${e.message}"
                 } catch (e: Exception) {
                     state.errorMessage = e.message ?: "Reopen failed."
+                }
+            }
+        }
+
+        Tooltip(
+            "Mark an existing ticket as URGENT if you cannot solve it.\n" +
+            "Wraps the ticket in UrgentTicketDecorator and escalates it to the Manager."
+        ) {
+            ActionButton("Mark Urgent (Escalate)", Icons.Filled.Warning, RedAlert) {
+                val ticket = state.selectedTicket
+                if (ticket == null) { state.errorMessage = "Select a ticket first."; return@ActionButton }
+                if (ticket.status == TicketStatus.RESOLVED) {
+                    state.errorMessage = "Cannot edit a RESOLVED ticket."; return@ActionButton
+                }
+                if (ticket.priority == Priority.URGENT) {
+                    state.errorMessage = "Ticket is already URGENT."; return@ActionButton
+                }
+                try {
+                    val previousRole = state.currentRole.name
+                    state.facade.markAsUrgent(ticket)
+                    state.refreshTickets()
+                    val time = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"))
+                    state.logLines.add("[$time] ⬆  Ticket #${ticket.id} switched from $previousRole to MANAGER")
+                } catch (e: Exception) {
+                    state.errorMessage = e.message ?: "Update failed."
                 }
             }
         }
@@ -172,7 +154,7 @@ fun ActionPanel(state: AppState, modifier: Modifier) {
         // ── Selected ticket detail card ────────────────────────────────────────
         state.selectedTicket?.let { t ->
             HorizontalDivider(color = Surface2)
-            SectionLabel(title = "Selected Ticket", guide = "Details of the currently selected row.")
+            SectionLabel(title = "Selected Ticket", guide = "Details and description of the current ticket.")
             SelectedTicketCard(t)
         }
     }
@@ -218,12 +200,12 @@ fun ActionButton(label: String, icon: ImageVector, color: Color, onClick: () -> 
 
 /** Routing strategy picker — dropdown styled to match the dark theme. */
 @Composable
-fun StrategyDropdown(selected: String, onSelect: (String) -> Unit) {
+fun StrategyDropdown(selected: String, isLocked: Boolean, onSelect: (String) -> Unit) {
     val options = listOf("Standard", "Urgent", "Type-Based")
     var expanded by remember { mutableStateOf(false) }
     Box {
         OutlinedButton(
-            onClick       = { expanded = true },
+            onClick       = { if (!isLocked) expanded = true },
             modifier      = Modifier.fillMaxWidth(),
             colors        = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
             border        = androidx.compose.foundation.BorderStroke(1.dp, Surface2),
@@ -234,33 +216,61 @@ fun StrategyDropdown(selected: String, onSelect: (String) -> Unit) {
                 modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
             Text("Strategy: $selected", fontSize = 12.sp, modifier = Modifier.weight(1f))
-            Icon(Icons.Filled.ArrowDropDown, contentDescription = "Expand")
+            if (!isLocked) {
+                Icon(Icons.Filled.ArrowDropDown, contentDescription = "Expand")
+            } else {
+                Icon(Icons.Filled.Lock, contentDescription = "Locked", modifier = Modifier.size(16.dp))
+            }
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false },
-            modifier = Modifier.background(Surface2)) {
-            options.forEach { opt ->
-                DropdownMenuItem(
-                    text    = { Text(opt, color = TextPrimary, fontSize = 13.sp) },
-                    onClick = { onSelect(opt); expanded = false }
-                )
+        if (!isLocked) {
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false },
+                modifier = Modifier.background(Surface2)) {
+                options.forEach { opt ->
+                    DropdownMenuItem(
+                        text    = { Text(opt, color = TextPrimary, fontSize = 13.sp) },
+                        onClick = { onSelect(opt); expanded = false }
+                    )
+                }
             }
         }
     }
 }
 
-/** Small info card showing the selected ticket's key fields. */
+/** Small info card showing the selected ticket's key fields and description. */
 @Composable
 fun SelectedTicketCard(ticket: Ticket) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Surface2),
-        shape  = RoundedCornerShape(8.dp)
+        shape  = RoundedCornerShape(8.dp),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("#${ticket.id} — ${ticket.title}", fontSize = 12.sp,
-                color = TextPrimary, fontWeight = FontWeight.SemiBold, maxLines = 2)
-            InfoRow("Type",     ticket.getTypeLabel())
-            InfoRow("Status",   ticket.status.name)
+                color = TextPrimary, fontWeight = FontWeight.SemiBold)
+            
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                InfoRow("Type",     ticket.getTypeLabel())
+                InfoRow("Status",   ticket.status.name)
+            }
             InfoRow("Priority", ticket.priority.name)
+            
+            HorizontalDivider(color = Surface1, modifier = Modifier.padding(vertical = 4.dp))
+            
+            Text("Description:", fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 100.dp)
+                    .background(Surface1, RoundedCornerShape(4.dp))
+                    .padding(8.dp)
+            ) {
+                Text(
+                    text     = ticket.description,
+                    fontSize = 11.sp,
+                    color    = TextPrimary,
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                )
+            }
         }
     }
 }
@@ -268,8 +278,8 @@ fun SelectedTicketCard(ticket: Ticket) {
 @Composable
 fun InfoRow(label: String, value: String) {
     Row {
-        Text("$label: ", fontSize = 11.sp, color = TextSecondary)
-        Text(value,       fontSize = 11.sp, color = TextPrimary)
+        Text("$label: ", fontSize = 10.sp, color = TextSecondary)
+        Text(value,       fontSize = 10.sp, color = TextPrimary)
     }
 }
 
@@ -402,9 +412,21 @@ fun SubmitDialog(state: AppState, onDismiss: () -> Unit) {
                                 return@Button
                             }
                             try {
-                                state.facade.submitTicket(
+                                val previousRole = state.currentRole
+                                val ticket = state.facade.submitTicket(
                                     ticketType, title.trim(), description.trim(), urgent)
                                 state.refreshTickets()
+                                
+                                val time = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"))
+                                if (urgent && previousRole != UserRole.MANAGER) {
+                                    state.logLines.add("[$time] ⬆  Ticket #${ticket.id} switched from ${previousRole.name} to MANAGER")
+                                } else if (previousRole == UserRole.AGENT_L1 && ticketType != TicketType.INQUIRY) {
+                                    val target = if (ticketType == TicketType.COMPLAINT) "MANAGER" else "AGENT_L2"
+                                    state.logLines.add("[$time] ⬆  Ticket #${ticket.id} switched from ${previousRole.name} to $target")
+                                } else if (previousRole == UserRole.AGENT_L2 && ticketType == TicketType.COMPLAINT) {
+                                    state.logLines.add("[$time] ⬆  Ticket #${ticket.id} switched from ${previousRole.name} to MANAGER")
+                                }
+                                
                                 onDismiss()
                             } catch (e: Exception) {
                                 state.errorMessage = e.message ?: "Submit failed."
@@ -513,9 +535,22 @@ fun EmailDialog(state: AppState, onDismiss: () -> Unit) {
                                 return@Button
                             }
                             try {
-                                state.facade.submitFromEmail(
+                                val previousRole = state.currentRole
+                                val ticket = state.facade.submitFromEmail(
                                     EmailMessage(sender.trim(), subject.trim(), body.trim()), urgent)
                                 state.refreshTickets()
+                                
+                                val time = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"))
+                                val ticketType = ticket.type
+                                if (urgent && previousRole != UserRole.MANAGER) {
+                                    state.logLines.add("[$time] ⬆  Ticket #${ticket.id} switched from ${previousRole.name} to MANAGER")
+                                } else if (previousRole == UserRole.AGENT_L1 && ticketType != TicketType.INQUIRY) {
+                                    val target = if (ticketType == TicketType.COMPLAINT) "MANAGER" else "AGENT_L2"
+                                    state.logLines.add("[$time] ⬆  Ticket #${ticket.id} switched from ${previousRole.name} to $target")
+                                } else if (previousRole == UserRole.AGENT_L2 && ticketType == TicketType.COMPLAINT) {
+                                    state.logLines.add("[$time] ⬆  Ticket #${ticket.id} switched from ${previousRole.name} to MANAGER")
+                                }
+                                
                                 onDismiss()
                             } catch (e: Exception) {
                                 state.errorMessage = e.message ?: "Email submit failed."

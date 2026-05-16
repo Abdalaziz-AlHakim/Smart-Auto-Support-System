@@ -1,0 +1,10 @@
+classDiagram
+    class ITicketSystem { <<interface>> +resolveTicket() }
+    class TicketSystem { +resolveTicket() }
+    class TicketSystemProxy { -real: TicketSystem }
+    class UserSession { -role: UserRole }
+    
+    ITicketSystem <|.. TicketSystem
+    ITicketSystem <|.. TicketSystemProxy
+    TicketSystemProxy --> TicketSystem : "delegates"
+    TicketSystemProxy ..> UserSession : "checks role"
